@@ -83,7 +83,7 @@ export const mockQuestions: Question[] = [
 /**
  * Travailler (progression utilisateur)
  */
-export let mockUserModules: UserModule[] = [
+export const mockUserModules: UserModule[] = [
     {
         userMail: mockUser.mail,
         moduleNom: "Boucles JS",
@@ -103,7 +103,7 @@ export let mockUserModules: UserModule[] = [
 /**
  * Obtenir (résultats des quiz)
  */
-export let mockQuizResults: QuizResult[] = [
+export const mockQuizResults: QuizResult[] = [
     {
         userMail: mockUser.mail,
         quizId: 1,
@@ -115,7 +115,7 @@ export let mockQuizResults: QuizResult[] = [
 /**
  * Activités / Agender (planning personnel)
  */
-export let mockActivities: Activity[] = [
+export const mockActivities: Activity[] = [
     {
         numeroActivites: 1,
         userMail: mockUser.mail,
