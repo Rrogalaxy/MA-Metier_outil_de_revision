@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import { addMyActivity, deleteMyActivity, listMyActivities } from "../services/planning.service";
+import { clearSchoolEvents, getSchoolEvents, importSchoolIcs } from "../services/schoolSchedule.service";
 import type { Activity } from "../types";
+import type { IcsEvent } from "../lib/ics";
 
 type FormState = {
     nomActivite: string;
@@ -23,6 +25,8 @@ export default function PlanningPage() {
     const [items, setItems] = useState<Activity[]>([]);
     const [err, setErr] = useState<string | null>(null);
 
+    const [schoolEvents, setSchoolEvents] = useState<IcsEvent[]>([]);
+
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState<FormState>({
         nomActivite: "",
@@ -31,7 +35,7 @@ export default function PlanningPage() {
         heureFin: "19:00",
     });
 
-    async function reload() {
+    async function reloadActivities() {
         setLoading(true);
         setErr(null);
         try {
@@ -44,8 +48,18 @@ export default function PlanningPage() {
         }
     }
 
+    async function reloadSchool() {
+        try {
+            const ev = await getSchoolEvents();
+            setSchoolEvents(ev);
+        } catch {
+            // on garde silencieux, ce n'est pas critique
+        }
+    }
+
     useEffect(() => {
-        void reload();
+        void reloadActivities();
+        void reloadSchool();
     }, []);
 
     const grouped = useMemo(() => {
@@ -54,7 +68,6 @@ export default function PlanningPage() {
             if (!map.has(a.date)) map.set(a.date, []);
             map.get(a.date)!.push(a);
         }
-        // tri par date puis heure
         for (const [d, arr] of map.entries()) {
             arr.sort((x, y) => x.heureDebut.localeCompare(y.heureDebut));
             map.set(d, arr);
@@ -84,7 +97,7 @@ export default function PlanningPage() {
             });
 
             setForm(f => ({ ...f, nomActivite: "" }));
-            await reload();
+            await reloadActivities();
         } catch {
             setErr("Erreur lors de l’ajout.");
         } finally {
@@ -96,7 +109,7 @@ export default function PlanningPage() {
         setErr(null);
         try {
             await deleteMyActivity(id);
-            await reload();
+            await reloadActivities();
         } catch {
             setErr("Erreur lors de la suppression.");
         }
@@ -107,14 +120,14 @@ export default function PlanningPage() {
             <div style={topRow}>
                 <div>
                     <h2 style={{ ...h2, marginBottom: 4 }}>Planning</h2>
-                    <div style={muted}>Activités personnelles (MCD : Activites / Agender)</div>
+                    <div style={muted}>Activités personnelles + horaire scolaire importé (.ics)</div>
                 </div>
                 <Link to="/dashboard" style={btnLink}>← Dashboard</Link>
             </div>
 
-            {/* Formulaire */}
+            {/* Formulaire activités */}
             <div style={{ marginTop: 14 }}>
-                <h3 style={h3}>Ajouter une activité</h3>
+                <h3 style={h3}>Ajouter une activité (privée)</h3>
 
                 <div style={formGrid}>
                     <div style={field}>
@@ -173,9 +186,61 @@ export default function PlanningPage() {
                 {err && <div style={{ marginTop: 10, ...errorBox }}>{err}</div>}
             </div>
 
-            {/* Liste */}
+            {/* Import .ics */}
             <div style={{ marginTop: 18 }}>
-                <h3 style={h3}>Mes activités</h3>
+                <h3 style={h3}>Horaire scolaire (.ics)</h3>
+
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    <input
+                        type="file"
+                        accept=".ics,text/calendar"
+                        onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+
+                            const text = await file.text();
+                            const ev = await importSchoolIcs(text);
+                            setSchoolEvents(ev);
+                            e.currentTarget.value = "";
+                        }}
+                    />
+
+                    <button
+                        style={btnDanger}
+                        onClick={async () => {
+                            await clearSchoolEvents();
+                            setSchoolEvents([]);
+                        }}
+                    >
+                        Effacer l’horaire
+                    </button>
+
+                    <span style={muted}>Cours importés : <b>{schoolEvents.length}</b></span>
+                </div>
+
+                {schoolEvents.length > 0 && (
+                    <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                        {schoolEvents.slice(0, 8).map((c, i) => (
+                            <div key={i} style={row}>
+                                <div style={{ flex: 1 }}>
+                                    <div style={{ fontWeight: 800 }}>{c.summary}</div>
+                                    <div style={muted}>
+                                        {c.startISO.slice(0, 10)} • {c.startISO.slice(11, 16)} → {c.endISO.slice(11, 16)}
+                                        {c.location ? ` • ${c.location}` : ""}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                        {schoolEvents.length > 8 && (
+                            <div style={muted}>… +{schoolEvents.length - 8} autres cours</div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* Liste activités */}
+            <div style={{ marginTop: 18 }}>
+                <h3 style={h3}>Mes activités (privées)</h3>
 
                 {loading ? (
                     <div style={muted}>Chargement…</div>
@@ -213,8 +278,8 @@ export default function PlanningPage() {
             </div>
 
             <div style={{ marginTop: 14, ...note }}>
-                Cette page permet de gérer les <b>disponibilités privées</b>. Plus tard, ces activités seront combinées avec l’horaire
-                scolaire importé (.ics) pour calculer automatiquement les créneaux de révision.
+                Prochaine étape : combiner <b>horaire scolaire</b> + <b>activités privées</b> pour calculer automatiquement les créneaux
+                disponibles de révision.
             </div>
         </section>
     );
