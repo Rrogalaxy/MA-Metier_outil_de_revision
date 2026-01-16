@@ -1,7 +1,17 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { Link, useParams } from "react-router-dom";
 import { getQuiz, listQuestions, submitQuiz } from "../services/quiz.service";
 import type { Question, Quiz } from "../types";
+
+type AnswerState = {
+    questionId: number;
+    given: string;          // réponse saisie (quiz) ou "auto" (flashcards)
+    isCorrect: boolean;     // true/false selon correction
+};
+
+function normalize(s: string) {
+    return s.trim().toLowerCase();
+}
 
 export default function QuizPage() {
     const { quizId } = useParams();
@@ -9,69 +19,308 @@ export default function QuizPage() {
 
     const [quiz, setQuiz] = useState<Quiz | null>(null);
     const [questions, setQuestions] = useState<Question[]>([]);
+    const [loading, setLoading] = useState(true);
+
     const [index, setIndex] = useState(0);
-    const [answer, setAnswer] = useState("");
-    const [score, setScore] = useState<number | null>(null);
+    const [input, setInput] = useState("");
+    const [showAnswer, setShowAnswer] = useState(false); // utile pour flashcards & feedback
+    const [lastCheck, setLastCheck] = useState<"correct" | "incorrect" | null>(null);
+
+    const [answers, setAnswers] = useState<AnswerState[]>([]);
+    const [saving, setSaving] = useState(false);
+    const [savedScore, setSavedScore] = useState<number | null>(null);
+
+    const current = questions[index];
+    const total = questions.length;
+
+    const mode: "quiz" | "flashcard" = quiz?.type ?? "quiz";
+    const isFinished = total > 0 && index >= total;
+
+    const correctCount = useMemo(
+        () => answers.filter(a => a.isCorrect).length,
+        [answers]
+    );
+
+    const score = useMemo(() => {
+        if (total === 0) return 0;
+        // Score basé sur le nombre de questions déjà validées (answers)
+        return Math.round((correctCount / total) * 100);
+    }, [correctCount, total]);
 
     useEffect(() => {
-        if (!Number.isFinite(id)) return;
-        getQuiz(id).then(setQuiz);
-        listQuestions(id).then(setQuestions);
+        let cancelled = false;
+
+        async function load() {
+            if (!Number.isFinite(id)) return;
+
+            setLoading(true);
+
+            const [qz, qs] = await Promise.all([getQuiz(id), listQuestions(id)]);
+            if (cancelled) return;
+
+            setQuiz(qz);
+            setQuestions(qs);
+            setIndex(0);
+            setInput("");
+            setShowAnswer(false);
+            setLastCheck(null);
+            setAnswers([]);
+            setSavedScore(null);
+            setLoading(false);
+        }
+
+        void load();
+        return () => {
+            cancelled = true;
+        };
     }, [id]);
 
-    const q = questions[index];
-
-    async function validate() {
-        if (!q) return;
-        const ok = answer.trim().toLowerCase() === q.reponse.trim().toLowerCase();
-        const nextIndex = index + 1;
-
-        // score POC: % de bonnes réponses
-        const currentGood = (score ?? 0) * (index / 100) + (ok ? 1 : 0); // pas parfait mais suffisant pour mock
-        if (nextIndex < questions.length) {
-            setIndex(nextIndex);
-            setAnswer("");
-            setScore((currentGood / nextIndex) * 100);
-        } else {
-            const final = Math.round((currentGood / questions.length) * 100);
-            setScore(final);
-            await submitQuiz(id, final);
+    async function finishAndSave(finalScore: number) {
+        setSaving(true);
+        try {
+            await submitQuiz(id, finalScore);
+            setSavedScore(finalScore);
+        } finally {
+            setSaving(false);
         }
+    }
+
+    async function validateQuizAnswer() {
+        if (!current) return;
+
+        const given = input;
+        const ok = normalize(given) === normalize(current.reponse);
+
+        setAnswers(prev => [
+            ...prev,
+            { questionId: current.numeroQuestion, given, isCorrect: ok },
+        ]);
+
+        setLastCheck(ok ? "correct" : "incorrect");
+        setShowAnswer(true);
+
+        // Petit délai pour laisser l’utilisateur lire le feedback
+        // (Tu peux enlever si tu préfères "Next" manuel)
+    }
+
+    async function nextAfterFeedback() {
+        const next = index + 1;
+
+        setInput("");
+        setShowAnswer(false);
+        setLastCheck(null);
+
+        if (next >= total) {
+            const finalCorrect = answers.filter(a => a.isCorrect).length;
+            const final = Math.round((finalCorrect / total) * 100);
+
+            setIndex(next);
+            await finishAndSave(final);
+            return;
+        }
+
+
+        setIndex(next);
+    }
+
+    // Flashcards: révéler puis auto-évaluer
+    async function flashcardRate(choice: "facile" | "moyen" | "difficile") {
+        if (!current) return;
+
+        // mapping simple : facile=correct, moyen=correct, difficile=incorrect
+        const ok = choice !== "difficile";
+
+        setAnswers(prev => [
+            ...prev,
+            { questionId: current.numeroQuestion, given: `auto:${choice}`, isCorrect: ok },
+        ]);
+
+        setLastCheck(ok ? "correct" : "incorrect");
+        setShowAnswer(true);
+    }
+
+    async function nextFlashcard() {
+        const next = index + 1;
+
+        setShowAnswer(false);
+        setLastCheck(null);
+
+        if (next >= total) {
+            const finalCorrect = answers.filter(a => a.isCorrect).length;
+            const final = Math.round((finalCorrect / total) * 100);
+
+            setIndex(next);
+            await finishAndSave(final);
+            return;
+        }
+
+        setIndex(next);
+    }
+
+    function restart() {
+        setIndex(0);
+        setInput("");
+        setShowAnswer(false);
+        setLastCheck(null);
+        setAnswers([]);
+        setSavedScore(null);
+    }
+
+    const progressPct = total === 0 ? 0 : Math.round((Math.min(index, total) / total) * 100);
+
+    const wrongQuestions = useMemo(() => {
+        const wrongIds = new Set(answers.filter(a => !a.isCorrect).map(a => a.questionId));
+        return questions.filter(q => wrongIds.has(q.numeroQuestion));
+    }, [answers, questions]);
+
+    if (!Number.isFinite(id)) {
+        return (
+            <section style={card}>
+                <h2 style={h2}>Quiz introuvable</h2>
+                <div style={muted}>ID invalide.</div>
+            </section>
+        );
     }
 
     return (
         <section style={card}>
-            <h2 style={h2}>{quiz ? quiz.nomQuiz : "Quiz…"}</h2>
-            <div style={muted}>Module: {quiz?.moduleNom ?? "—"}</div>
+            <div style={topRow}>
+                <div>
+                    <h2 style={{ ...h2, marginBottom: 4 }}>{quiz ? quiz.nomQuiz : "Quiz…"}</h2>
+                    <div style={muted}>
+                        Module: <b>{quiz?.moduleNom ?? "—"}</b> • Mode: <b>{mode}</b>
+                    </div>
+                </div>
 
-            {questions.length === 0 ? (
-                <div style={{ marginTop: 12, ...muted }}>Aucune question (mock).</div>
-            ) : score !== null && index >= questions.length ? (
-                <div style={{ marginTop: 12 }}>
-                    <div style={{ fontWeight: 800, fontSize: 18 }}>Score: {Math.round(score)}%</div>
-                    <div style={muted}>Résultat enregistré (mock “Obtenir”).</div>
+                <Link to="/modules" style={btnLink}>← Modules</Link>
+            </div>
+
+            {loading ? (
+                <div style={{ marginTop: 12, ...muted }}>Chargement…</div>
+            ) : total === 0 ? (
+                <div style={{ marginTop: 12, ...muted }}>Aucune question pour ce quiz.</div>
+            ) : isFinished ? (
+                <div style={{ marginTop: 14 }}>
+                    <h3 style={h3}>Résultat</h3>
+
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                        <div style={{ fontSize: 22, fontWeight: 900 }}>{savedScore ?? score}%</div>
+                        <div style={muted}>
+                            {correctCount}/{total} correct
+                            {saving ? " • Enregistrement…" : savedScore !== null ? " • Enregistré" : ""}
+                        </div>
+                    </div>
+
+                    {wrongQuestions.length > 0 ? (
+                        <div style={{ marginTop: 12 }}>
+                            <div style={{ fontWeight: 800, marginBottom: 6 }}>À revoir :</div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                {wrongQuestions.map(q => (
+                                    <div key={q.numeroQuestion} style={reviewRow}>
+                                        <div style={{ fontWeight: 700 }}>{q.enonce}</div>
+                                        <div style={muted}>Bonne réponse : {q.reponse}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ) : (
+                        <div style={{ marginTop: 12, ...muted }}>Parfait 🎉 aucune erreur.</div>
+                    )}
+
+                    <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button style={btn} onClick={restart}>Recommencer</button>
+                        <Link to="/stats" style={btnLink}>Voir mes stats</Link>
+                    </div>
                 </div>
             ) : (
-                <div style={{ marginTop: 12 }}>
-                    <div style={{ fontWeight: 700 }}>
-                        Question {index + 1}/{questions.length}
+                <div style={{ marginTop: 14 }}>
+                    {/* Progress */}
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                        <div style={{ fontWeight: 800 }}>
+                            Question {index + 1}/{total}
+                        </div>
+                        <div style={muted}>Score actuel : <b>{score}%</b></div>
                     </div>
-                    <div style={{ marginTop: 8 }}>{q?.enonce}</div>
+                    <div style={progressOuter}>
+                        <div style={{ ...progressInner, width: `${progressPct}%` }} />
+                    </div>
 
-                    <input
-                        style={input}
-                        placeholder="Ta réponse…"
-                        value={answer}
-                        onChange={(e) => setAnswer(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === "Enter") void validate();
-                        }}
-                    />
+                    {/* Question */}
+                    <div style={questionBox}>
+                        <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 6 }}>
+                            {current.enonce}
+                        </div>
 
-                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                        <button style={btn} onClick={() => void validate()}>
-                            Valider
-                        </button>
+                        {/* QUIZ MODE */}
+                        {mode === "quiz" ? (
+                            <>
+                                <input
+                                    style={inputStyle}
+                                    placeholder="Ta réponse…"
+                                    value={input}
+                                    onChange={(e) => setInput(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter" && !showAnswer) void validateQuizAnswer();
+                                        if (e.key === "Enter" && showAnswer) void nextAfterFeedback();
+                                    }}
+                                    disabled={showAnswer}
+                                />
+
+                                {!showAnswer ? (
+                                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                                        <button
+                                            style={btnPrimary}
+                                            onClick={() => void validateQuizAnswer()}
+                                            disabled={input.trim().length === 0}
+                                        >
+                                            Valider
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <Feedback
+                                        check={lastCheck}
+                                        correctAnswer={current.reponse}
+                                        onNext={() => void nextAfterFeedback()}
+                                    />
+                                )}
+                            </>
+                        ) : (
+                            /* FLASHCARD MODE */
+                            <>
+                                {!showAnswer ? (
+                                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                                        <button style={btnPrimary} onClick={() => setShowAnswer(true)}>
+                                            Révéler la réponse
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div style={answerBox}>
+                                            <div style={muted}>Réponse :</div>
+                                            <div style={{ fontWeight: 900 }}>{current.reponse}</div>
+                                        </div>
+
+                                        {lastCheck === null ? (
+                                            <div style={{ marginTop: 10 }}>
+                                                <div style={muted}>Auto-évaluation :</div>
+                                                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+                                                    <button style={btn} onClick={() => void flashcardRate("facile")}>Facile</button>
+                                                    <button style={btn} onClick={() => void flashcardRate("moyen")}>Moyen</button>
+                                                    <button style={btn} onClick={() => void flashcardRate("difficile")}>Difficile</button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <Feedback
+                                                check={lastCheck}
+                                                correctAnswer={current.reponse}
+                                                onNext={() => void nextFlashcard()}
+                                                nextLabel="Suivant"
+                                            />
+                                        )}
+                                    </>
+                                )}
+                            </>
+                        )}
                     </div>
                 </div>
             )}
@@ -79,11 +328,83 @@ export default function QuizPage() {
     );
 }
 
-const card: React.CSSProperties = { border: "1px solid rgba(0,0,0,0.12)", borderRadius: 14, padding: 14, background: "white" };
-const h2: React.CSSProperties = { margin: "0 0 6px 0", fontSize: 18 };
-const muted: React.CSSProperties = { opacity: 0.75, fontSize: 13 };
+/* Small component */
+function Feedback(props: {
+    check: "correct" | "incorrect" | null;
+    correctAnswer: string;
+    onNext: () => void;
+    nextLabel?: string;
+}) {
+    const { check, correctAnswer, onNext, nextLabel } = props;
 
-const input: React.CSSProperties = {
+    return (
+        <div style={{ marginTop: 10 }}>
+            <div style={check === "correct" ? okStyle : badStyle}>
+                {check === "correct" ? "✅ Correct" : "❌ Incorrect"}
+            </div>
+
+            {check === "incorrect" && (
+                <div style={{ marginTop: 6, ...mutedStyle }}>
+                    Bonne réponse : <b>{correctAnswer}</b>
+                </div>
+            )}
+
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <button style={btnPrimaryStyle} onClick={onNext}>
+                    {nextLabel ?? "Question suivante"}
+                </button>
+            </div>
+        </div>
+    );
+}
+
+/* =======================
+   STYLES
+   ======================= */
+
+const card: CSSProperties = {
+    border: "1px solid rgba(0,0,0,0.12)",
+    borderRadius: 14,
+    padding: 14,
+    background: "white",
+};
+
+const topRow: CSSProperties = {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+    alignItems: "center",
+};
+
+const h2: CSSProperties = { margin: "0 0 10px 0", fontSize: 18 };
+const h3: CSSProperties = { margin: "0 0 10px 0", fontSize: 14 };
+
+const mutedStyle: CSSProperties = { opacity: 0.75, fontSize: 13 };
+
+const progressOuter: CSSProperties = {
+    marginTop: 8,
+    height: 10,
+    borderRadius: 999,
+    background: "rgba(0,0,0,0.08)",
+    overflow: "hidden",
+};
+
+const progressInner: CSSProperties = {
+    height: "100%",
+    borderRadius: 999,
+    background: "rgba(0,0,0,0.6)",
+};
+
+const questionBox: CSSProperties = {
+    marginTop: 12,
+    border: "1px solid rgba(0,0,0,0.10)",
+    borderRadius: 14,
+    padding: 12,
+    background: "white",
+};
+
+const inputStyle: CSSProperties = {
     marginTop: 10,
     width: "100%",
     padding: "8px 10px",
@@ -94,11 +415,54 @@ const input: React.CSSProperties = {
     outline: "none",
 };
 
-const btn: React.CSSProperties = {
+const answerBox: CSSProperties = {
+    marginTop: 10,
+    border: "1px dashed rgba(0,0,0,0.18)",
+    borderRadius: 12,
+    padding: 10,
+    background: "rgba(0,0,0,0.03)",
+};
+
+const reviewRow: CSSProperties = {
+    border: "1px solid rgba(0,0,0,0.10)",
+    borderRadius: 12,
+    padding: 10,
+    background: "white",
+};
+
+const btn: CSSProperties = {
     padding: "8px 10px",
     borderRadius: 10,
     border: "1px solid rgba(0,0,0,0.18)",
     background: "white",
     color: "#111",
     cursor: "pointer",
+    textDecoration: "none",
 };
+
+const btnPrimaryStyle: CSSProperties = {
+    ...btn,
+    background: "black",
+    color: "white",
+    border: "1px solid black",
+};
+
+const btnLink: CSSProperties = {
+    ...btn,
+    background: "white",
+};
+
+const okStyle: CSSProperties = {
+    padding: "8px 10px",
+    borderRadius: 12,
+    border: "1px solid rgba(0,0,0,0.10)",
+    background: "rgba(0,0,0,0.03)",
+    fontWeight: 800,
+};
+
+const badStyle: CSSProperties = {
+    ...okStyle,
+};
+
+const muted: CSSProperties = mutedStyle;
+const btnPrimary: CSSProperties = btnPrimaryStyle;
