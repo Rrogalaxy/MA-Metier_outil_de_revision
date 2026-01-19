@@ -1,3 +1,49 @@
+Installer et démarrer le serveur Vite local
+Installer NodeJs :
+https://nodejs.org/en/download
+Télécharger le projet depuit le github dans la branch develop :
+https://github.com/Rrogalaxy/MA-Metier_outil_de_revision/tree/Develop
+ou 
+git clone https://github.com/Rrogalaxy/MA-Metier_outil_de_revision/tree/Develop
+depuis le terminal webstorm.
+
+Une fois le projet téléchargé et mis dans un dossier, prenez le path de vote dossier. ( dans mon cas : C:\Users\pj77vjm\Desktop\revisions-poc-frontend)
+
+Utilisez Windows powershell ISE ou Windows Powershell (version terminal standard) pour vous placer dans le dossier et télécharger les dépendances :
+
+cd "$env:USERPROFILE\Desktop\revisions-poc-frontend" 
+npm.cmd install
+
+ <img width="945" height="282" alt="image" src="https://github.com/user-attachments/assets/7be0e653-84d2-4340-84bb-c4d8550a674b" />
+
+
+Appuyez sur F5 pour exécuter le script. 
+
+Une fois que vous avez installé les dépendances, vous êtes prêts à démarrer le serveur. 
+
+Utilisez Windows Powershell (version terminal standard car la version ISE affiche les données du port de connexions bizarrement.) à nouveau :
+
+cd "$env:USERPROFILE\Desktop\revisions-poc-frontend"
+npm.cmd run dev
+
+ <img width="945" height="361" alt="image" src="https://github.com/user-attachments/assets/af5685ae-dcd6-4113-ac61-d6c64b4dc712" />
+
+
+Le serveur VITE va vous donner une ligne avec l’url à utiliser (dans notre cas le port 5174)
+Surtout ne fermez pas le terminal powershell, cela « éteint » le serveur local.
+
+Tapez le liens URL avec le numéro de port correspondant afin d’afficher le serveur.
+
+ 
+<img width="945" height="547" alt="image" src="https://github.com/user-attachments/assets/db94a929-5c4a-4b89-9cfe-67e9d50c2a72" />
+
+
+
+
+
+
+
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
