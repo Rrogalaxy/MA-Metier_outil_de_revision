@@ -1,10 +1,47 @@
+/**
+ * Imports React
+ *
+ * - useState : stocke des valeurs locales dans le composant (état)
+ * - useEffect : exécute du code au chargement de la page (ou quand une dépendance change)
+ * - useMemo : mémorise un calcul pour éviter de recalculer à chaque rendu
+ * - CSSProperties : type TS pour les objets style
+ */
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
+
+/**
+ * React Router
+ * - Link : lien interne, navigation sans recharger toute la page
+ */
 import { Link } from "react-router-dom";
+
+/**
+ * Services planning (activités privées)
+ * - listMyActivities() : liste des activités privées de l'élève
+ * - addMyActivity() : ajoute une activité privée
+ * - deleteMyActivity() : supprime une activité privée
+ */
 import { addMyActivity, deleteMyActivity, listMyActivities } from "../services/planning.service";
+
+/**
+ * Services horaire scolaire (.ics)
+ * - getSchoolEvents() : récupère les cours déjà importés
+ * - importSchoolIcs(text) : parse + stocke les cours à partir d’un fichier .ics
+ * - clearSchoolEvents() : efface tous les cours importés
+ */
 import { clearSchoolEvents, getSchoolEvents, importSchoolIcs } from "../services/schoolSchedule.service";
+
+/**
+ * Types TypeScript
+ * - Activity : activité privée (MCD: Activités / Agender)
+ * - IcsEvent : événement importé du .ics (cours)
+ */
 import type { Activity } from "../types";
 import type { IcsEvent } from "../lib/ics";
 
+/**
+ * FormState : décrit l'état du formulaire.
+ * -> formulaire "contrôlé" : les valeurs viennent du state React.
+ */
 type FormState = {
     nomActivite: string;
     date: string;       // YYYY-MM-DD
@@ -12,21 +49,56 @@ type FormState = {
     heureFin: string;   // HH:MM
 };
 
+/**
+ * todayISO() : renvoie la date du jour au format "YYYY-MM-DD"
+ */
 function todayISO() {
     return new Date().toISOString().slice(0, 10);
 }
 
+/**
+ * Validation simple pour une heure au format "HH:MM"
+ * Regex : ^\d{2}:\d{2}$
+ * - ^ : début de chaîne
+ * - \d{2} : 2 chiffres
+ * - : : le caractère ":"
+ * - \d{2} : 2 chiffres
+ * - $ : fin de chaîne
+ */
 function isValidTime(t: string) {
     return /^\d{2}:\d{2}$/.test(t);
 }
 
+/**
+ * Composant PlanningPage
+ *
+ * Page affichée sur "/planning"
+ * Fonctionnalités :
+ * - Ajouter / supprimer des activités privées
+ * - Importer un horaire scolaire en .ics
+ * - Afficher les cours importés et les activités privées
+ *
+ * (La fusion cours+privé pour créneaux libres est annoncée en "prochaine étape")
+ */
 export default function PlanningPage() {
+    /**
+     * loading : vrai quand on charge les activités privées
+     * items : liste des activités privées
+     * err : message d’erreur éventuel à afficher
+     */
     const [loading, setLoading] = useState(true);
     const [items, setItems] = useState<Activity[]>([]);
     const [err, setErr] = useState<string | null>(null);
 
+    /**
+     * schoolEvents : liste des cours importés via le .ics
+     */
     const [schoolEvents, setSchoolEvents] = useState<IcsEvent[]>([]);
 
+    /**
+     * saving : vrai pendant l’ajout d’une activité
+     * form : état du formulaire (champs contrôlés)
+     */
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState<FormState>({
         nomActivite: "",
@@ -35,6 +107,14 @@ export default function PlanningPage() {
         heureFin: "19:00",
     });
 
+    /**
+     * reloadActivities :
+     * Recharge les activités privées depuis le service.
+     * - met loading à true
+     * - tente de charger
+     * - affiche un message d’erreur si besoin
+     * - remet loading à false
+     */
     async function reloadActivities() {
         setLoading(true);
         setErr(null);
@@ -48,33 +128,75 @@ export default function PlanningPage() {
         }
     }
 
+    /**
+     * reloadSchool :
+     * Recharge les cours importés.
+     * Ici, si ça échoue ce n'est pas "bloquant", donc on n'affiche pas d'erreur.
+     */
     async function reloadSchool() {
         try {
             const ev = await getSchoolEvents();
             setSchoolEvents(ev);
         } catch {
-            // on garde silencieux, ce n'est pas critique
+            // non critique : on garde silencieux
         }
     }
 
+    /**
+     * useEffect(..., [])
+     * -> exécuté une seule fois au chargement de la page
+     *
+     * On charge :
+     * - activités privées
+     * - cours importés
+     */
     useEffect(() => {
         void reloadActivities();
         void reloadSchool();
     }, []);
 
+    /**
+     * grouped :
+     * Regroupe les activités privées par date pour un affichage plus lisible.
+     *
+     * Exemple :
+     * items = [ (12.01 Sport), (12.01 Job), (13.01 Sport) ]
+     * grouped = [
+     *   ["2026-01-12", [Sport, Job]],
+     *   ["2026-01-13", [Sport]]
+     * ]
+     *
+     * useMemo : on ne recalcule que si items change.
+     */
     const grouped = useMemo(() => {
         const map = new Map<string, Activity[]>();
+
+        // On remplit la map date -> activités
         for (const a of items) {
             if (!map.has(a.date)) map.set(a.date, []);
             map.get(a.date)!.push(a);
         }
+
+        // On trie les activités de chaque jour par heure de début
         for (const [d, arr] of map.entries()) {
             arr.sort((x, y) => x.heureDebut.localeCompare(y.heureDebut));
             map.set(d, arr);
         }
+
+        // On transforme la map en tableau trié par date
         return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
     }, [items]);
 
+    /**
+     * canSubmit :
+     * Détermine si le formulaire est valide :
+     * - nom >= 2 caractères
+     * - date présente
+     * - format heures OK
+     * - heureDebut < heureFin
+     *
+     * useMemo : recalcul seulement quand form change.
+     */
     const canSubmit = useMemo(() => {
         if (form.nomActivite.trim().length < 2) return false;
         if (!form.date) return false;
@@ -82,6 +204,11 @@ export default function PlanningPage() {
         return form.heureDebut < form.heureFin;
     }, [form]);
 
+    /**
+     * onAdd :
+     * Ajoute une activité privée via le service.
+     * Puis recharge la liste.
+     */
     async function onAdd() {
         if (!canSubmit) return;
 
@@ -96,7 +223,10 @@ export default function PlanningPage() {
                 heureFin: form.heureFin,
             });
 
+            // On vide le champ nom après ajout
             setForm(f => ({ ...f, nomActivite: "" }));
+
+            // On recharge la liste pour voir l’activité ajoutée
             await reloadActivities();
         } catch {
             setErr("Erreur lors de l’ajout.");
@@ -105,6 +235,11 @@ export default function PlanningPage() {
         }
     }
 
+    /**
+     * onDelete :
+     * Supprime une activité privée (par id).
+     * Puis recharge la liste.
+     */
     async function onDelete(id: number) {
         setErr(null);
         try {
@@ -115,8 +250,12 @@ export default function PlanningPage() {
         }
     }
 
+    /**
+     * Rendu JSX
+     */
     return (
         <section style={card}>
+            {/* Titre + lien retour */}
             <div style={topRow}>
                 <div>
                     <h2 style={{ ...h2, marginBottom: 4 }}>Planning</h2>
@@ -125,11 +264,14 @@ export default function PlanningPage() {
                 <Link to="/dashboard" style={btnLink}>← Dashboard</Link>
             </div>
 
-            {/* Formulaire activités */}
+            {/* ====================
+                Formulaire activités privées
+                ==================== */}
             <div style={{ marginTop: 14 }}>
                 <h3 style={h3}>Ajouter une activité (privée)</h3>
 
                 <div style={formGrid}>
+                    {/* Champ nom */}
                     <div style={field}>
                         <div style={label}>Nom</div>
                         <input
@@ -140,6 +282,7 @@ export default function PlanningPage() {
                         />
                     </div>
 
+                    {/* Champ date */}
                     <div style={field}>
                         <div style={label}>Date</div>
                         <input
@@ -150,6 +293,7 @@ export default function PlanningPage() {
                         />
                     </div>
 
+                    {/* Champ heure début */}
                     <div style={field}>
                         <div style={label}>Début</div>
                         <input
@@ -160,6 +304,7 @@ export default function PlanningPage() {
                         />
                     </div>
 
+                    {/* Champ heure fin */}
                     <div style={field}>
                         <div style={label}>Fin</div>
                         <input
@@ -170,27 +315,40 @@ export default function PlanningPage() {
                         />
                     </div>
 
+                    {/* Bouton ajouter */}
                     <div style={{ display: "flex", alignItems: "flex-end" }}>
-                        <button style={btnPrimary} disabled={!canSubmit || saving} onClick={() => void onAdd()}>
+                        <button
+                            style={btnPrimary}
+                            disabled={!canSubmit || saving}
+                            onClick={() => void onAdd()}
+                        >
                             {saving ? "Ajout…" : "Ajouter"}
                         </button>
                     </div>
                 </div>
 
+                {/* Petit message d’aide si formulaire invalide */}
                 {!canSubmit && (
                     <div style={{ marginTop: 8, ...muted }}>
                         Astuce : un nom (≥ 2 caractères) + une heure de fin après l’heure de début.
                     </div>
                 )}
 
+                {/* Affichage d’erreur si nécessaire */}
                 {err && <div style={{ marginTop: 10, ...errorBox }}>{err}</div>}
             </div>
 
-            {/* Import .ics */}
+            {/* ====================
+                Import .ics (horaire scolaire)
+                ==================== */}
             <div style={{ marginTop: 18 }}>
                 <h3 style={h3}>Horaire scolaire (.ics)</h3>
 
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    {/* Input file :
+                        - accept limite les fichiers sélectionnables à .ics
+                        - onChange se déclenche quand l'utilisateur choisit un fichier
+                    */}
                     <input
                         type="file"
                         accept=".ics,text/calendar"
@@ -198,13 +356,21 @@ export default function PlanningPage() {
                             const file = e.target.files?.[0];
                             if (!file) return;
 
+                            // On lit le fichier côté navigateur
                             const text = await file.text();
+
+                            // On demande au service d'importer (parser + stocker) les événements
                             const ev = await importSchoolIcs(text);
+
+                            // On met à jour le state avec les événements importés
                             setSchoolEvents(ev);
+
+                            // On reset l'input pour pouvoir réimporter le même fichier si besoin
                             e.currentTarget.value = "";
                         }}
                     />
 
+                    {/* Bouton "effacer l’horaire" */}
                     <button
                         style={btnDanger}
                         onClick={async () => {
@@ -218,6 +384,7 @@ export default function PlanningPage() {
                     <span style={muted}>Cours importés : <b>{schoolEvents.length}</b></span>
                 </div>
 
+                {/* Aperçu des cours importés (max 8 pour ne pas surcharger) */}
                 {schoolEvents.length > 0 && (
                     <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
                         {schoolEvents.slice(0, 8).map((c, i) => (
@@ -238,7 +405,9 @@ export default function PlanningPage() {
                 )}
             </div>
 
-            {/* Liste activités */}
+            {/* ====================
+                Liste des activités privées (groupées par date)
+                ==================== */}
             <div style={{ marginTop: 18 }}>
                 <h3 style={h3}>Mes activités (privées)</h3>
 
@@ -252,6 +421,7 @@ export default function PlanningPage() {
                             <div key={date} style={dayCard}>
                                 <div style={dayHeader}>
                                     <div style={{ fontWeight: 900 }}>{date}</div>
+                                    {/* jour vient potentiellement du backend (si présent) */}
                                     <div style={muted}>{arr[0]?.jour ?? ""}</div>
                                 </div>
 
@@ -265,7 +435,10 @@ export default function PlanningPage() {
                                                 </div>
                                             </div>
 
-                                            <button style={btnDanger} onClick={() => void onDelete(a.numeroActivites)}>
+                                            <button
+                                                style={btnDanger}
+                                                onClick={() => void onDelete(a.numeroActivites)}
+                                            >
                                                 Supprimer
                                             </button>
                                         </div>
@@ -277,6 +450,7 @@ export default function PlanningPage() {
                 )}
             </div>
 
+            {/* Note : ce que vous ferez ensuite (fusion pour créneaux libres) */}
             <div style={{ marginTop: 14, ...note }}>
                 Prochaine étape : combiner <b>horaire scolaire</b> + <b>activités privées</b> pour calculer automatiquement les créneaux
                 disponibles de révision.
@@ -333,7 +507,6 @@ const formGrid: CSSProperties = {
 };
 
 const field: CSSProperties = { display: "flex", flexDirection: "column", gap: 6 };
-
 const label: CSSProperties = { ...muted, fontSize: 12 };
 
 const input: CSSProperties = {

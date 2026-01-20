@@ -1,28 +1,91 @@
 {
   "compilerOptions": {
+    // =========================
+    // VERSION DE JAVASCRIPT
+    // =========================
+    // ESNext = dernière version moderne de JavaScript
+    // (le navigateur + Vite s’occupent de la compatibilité)
     "target": "ESNext",
+
+    // Utilise la syntaxe moderne pour les champs de classes
+    // (recommandé pour React + TypeScript)
     "useDefineForClassFields": true,
+
+    // =========================
+    // LIBRAIRIES DISPONIBLES
+    // =========================
+    // DOM : accès à document, window, etc.
+    // DOM.Iterable : permet for...of sur le DOM
+    // ESNext : fonctionnalités JS modernes (Promise, Map, etc.)
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
 
+    // =========================
+    // TYPE DE FICHIERS ACCEPTÉS
+    // =========================
+    // false = on n’autorise PAS les fichiers .js
+    // → tout le projet est en TypeScript (.ts / .tsx)
     "allowJs": false,
+
+    // Ignore les erreurs dans les fichiers de types des librairies
+    // (évite des erreurs inutiles venant de node_modules)
     "skipLibCheck": true,
 
+    // =========================
+    // IMPORTS / EXPORTS
+    // =========================
+    // Permet d’importer des modules CommonJS sans problème
     "esModuleInterop": true,
+
+    // Permet les imports par défaut même si le module ne les définit pas
     "allowSyntheticDefaultImports": true,
 
+    // =========================
+    // SÉCURITÉ & QUALITÉ DU CODE
+    // =========================
+    // Mode strict :
+    // - types obligatoires
+    // - pas de null/undefined implicite
+    // - détecte beaucoup d’erreurs tôt
     "strict": true,
+
+    // Force le respect exact de la casse dans les noms de fichiers
+    // (important entre Windows / Linux / GitHub)
     "forceConsistentCasingInFileNames": true,
 
+    // =========================
+    // MODULES
+    // =========================
+    // ESNext = modules modernes (import/export)
     "module": "ESNext",
+
+    // Résolution des modules façon Node.js
     "moduleResolution": "Node",
 
+    // =========================
+    // AUTRES FONCTIONNALITÉS
+    // =========================
+    // Permet d’importer des fichiers JSON
     "resolveJsonModule": true,
+
+    // Chaque fichier est traité indépendamment
+    // (obligatoire pour Vite)
     "isolatedModules": true,
+
+    // TypeScript NE génère PAS de fichiers JS
+    // (Vite s’en occupe)
     "noEmit": true,
 
+    // =========================
+    // JSX / REACT
+    // =========================
+    // Nouvelle transformation JSX (React 17+)
+    // → plus besoin d’importer React partout
     "jsx": "react-jsx"
   },
 
+  // =========================
+  // FICHIERS INCLUS
+  // =========================
+  // TypeScript analyse uniquement le dossier src
   "include": ["src"],
-  "exclude": ["src/_poc"]
 }
