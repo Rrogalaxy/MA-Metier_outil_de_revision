@@ -12,9 +12,4 @@ Route::middleware('auth:sanctum')->group(function(): void {
 
 });
 
-Route::post('/tokens/create', function (Request $request) {
-    $token = $request->user()->createToken($request->token_name);
-
-    return ['token' => $token->plainTextToken];
-});
 Route::post('/login', [AuthController::class, 'login']);
