@@ -1,104 +1,199 @@
-/**
- * Imports React
- *
- * - useState : stocke des valeurs locales dans le composant (état)
- * - useEffect : exécute du code au chargement de la page (ou quand une dépendance change)
- * - useMemo : mémorise un calcul pour éviter de recalculer à chaque rendu
- * - CSSProperties : type TS pour les objets style
- */
+// src/pages/PlanningPage.tsx
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-
-/**
- * React Router
- * - Link : lien interne, navigation sans recharger toute la page
- */
 import { Link } from "react-router-dom";
-
-/**
- * Services planning (activités privées)
- * - listMyActivities() : liste des activités privées de l'élève
- * - addMyActivity() : ajoute une activité privée
- * - deleteMyActivity() : supprime une activité privée
- */
-import { addMyActivity, deleteMyActivity, listMyActivities } from "../services/planning.service";
-
-/**
- * Services horaire scolaire (.ics)
- * - getSchoolEvents() : récupère les cours déjà importés
- * - importSchoolIcs(text) : parse + stocke les cours à partir d’un fichier .ics
- * - clearSchoolEvents() : efface tous les cours importés
- */
-import { clearSchoolEvents, getSchoolEvents, importSchoolIcs } from "../services/schoolSchedule.service";
-
-/**
- * Types TypeScript
- * - Activity : activité privée (MCD: Activités / Agender)
- * - IcsEvent : événement importé du .ics (cours)
- */
+import {
+    addMyActivity,
+    deleteMyActivity,
+    listMyActivities,
+} from "../services/planning.service";
+import {
+    clearSchoolEvents,
+    getSchoolEvents,
+    importSchoolIcs,
+} from "../services/schoolSchedule.service";
 import type { Activity } from "../types";
 import type { IcsEvent } from "../lib/ics";
 
-/**
- * FormState : décrit l'état du formulaire.
- * -> formulaire "contrôlé" : les valeurs viennent du state React.
- */
+/** ===== Types UI ===== */
+
 type FormState = {
     nomActivite: string;
-    date: string;       // YYYY-MM-DD
+    date: string; // YYYY-MM-DD
     heureDebut: string; // HH:MM
-    heureFin: string;   // HH:MM
+    heureFin: string; // HH:MM
 };
 
-/**
- * todayISO() : renvoie la date du jour au format "YYYY-MM-DD"
- */
+type BusySlot = {
+    startISO: string; // YYYY-MM-DDTHH:mm:ss (mais peut varier selon parsing)
+    endISO: string;
+    label?: string;
+};
+
+type FreeSlot = {
+    startISO: string;
+    endISO: string;
+};
+
+type CalendarBlock = {
+    id: string;
+    dayISO: string; // YYYY-MM-DD
+    startMin: number; // minutes depuis minuit
+    endMin: number;
+    title: string;
+    subtitle?: string;
+    kind: "school" | "private" | "free";
+    activityId?: number;
+};
+
+/** ===== Utils dates / heures ===== */
+
 function todayISO() {
     return new Date().toISOString().slice(0, 10);
 }
 
-/**
- * Validation simple pour une heure au format "HH:MM"
- * Regex : ^\d{2}:\d{2}$
- * - ^ : début de chaîne
- * - \d{2} : 2 chiffres
- * - : : le caractère ":"
- * - \d{2} : 2 chiffres
- * - $ : fin de chaîne
- */
 function isValidTime(t: string) {
     return /^\d{2}:\d{2}$/.test(t);
 }
 
 /**
- * Composant PlanningPage
- *
- * Page affichée sur "/planning"
- * Fonctionnalités :
- * - Ajouter / supprimer des activités privées
- * - Importer un horaire scolaire en .ics
- * - Afficher les cours importés et les activités privées
- *
- * (La fusion cours+privé pour créneaux libres est annoncée en "prochaine étape")
+ * ✅ Extraction robuste de "HH:mm" depuis une string ISO-like.
+ * Supporte :
+ * - 2026-01-12T08:15
+ * - 2026-01-12T08:15:00
+ * - 2026-01-12T08:15:00Z
+ * - 2026-01-12T08:15:00+01:00
+ * - 2026-01-12T08:15:00.000Z
  */
+function timeHHMM(iso: string) {
+    const m = iso.match(/T(\d{2}):(\d{2})/);
+    if (!m) return "00:00";
+    return `${m[1]}:${m[2]}`;
+}
+
+/**
+ * ✅ IMPORTANT: minutes depuis minuit basé sur timeHHMM().
+ * => garantit que 08:15 reste 08:15, même si l’ISO a un suffixe (Z, +01:00, etc.)
+ */
+function minutesSinceMidnight(iso: string) {
+    const hhmm = timeHHMM(iso); // "HH:mm"
+    const [hhStr, mmStr] = hhmm.split(":");
+    const hh = Number(hhStr ?? "0");
+    const mm = Number(mmStr ?? "0");
+    return hh * 60 + mm;
+}
+
+function startOfWeekMonday(dayISO: string) {
+    const d = new Date(`${dayISO}T00:00:00`);
+    const day = d.getDay(); // 0=dim, 1=lun...
+    const diff = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diff);
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString().slice(0, 10);
+}
+
+function addDaysISO(dayISO: string, n: number) {
+    const d = new Date(`${dayISO}T00:00:00`);
+    d.setDate(d.getDate() + n);
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString().slice(0, 10);
+}
+
+function minsToHHMM(mins: number) {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/** ===== Conversion vers BusySlot ===== */
+
+function toBusyFromIcs(events: IcsEvent[]): BusySlot[] {
+    return events.map((e) => ({
+        startISO: e.startISO,
+        endISO: e.endISO,
+        label: e.summary || "Cours",
+    }));
+}
+
+function toBusyFromActivities(activities: Activity[]): BusySlot[] {
+    return activities.map((a) => ({
+        startISO: `${a.date}T${a.heureDebut}:00`,
+        endISO: `${a.date}T${a.heureFin}:00`,
+        label: a.nomActivite,
+    }));
+}
+
+/** ===== Génération de créneaux libres (simple, stable, explicable) ===== */
+
+function generateFreeSlotsForDay(params: {
+    dayISO: string;
+    busy: BusySlot[];
+    workingHours: { startHour: number; endHour: number }; // ex 8..18
+    minMinutes: number; // ex 20
+}): FreeSlot[] {
+    const { dayISO, busy, workingHours, minMinutes } = params;
+
+    // ne garder que les busy sur ce jour
+    const busyOfDay = busy
+        .filter((b) => b.startISO.slice(0, 10) === dayISO)
+        .map((b) => ({
+            start: Math.max(
+                minutesSinceMidnight(b.startISO),
+                workingHours.startHour * 60
+            ),
+            end: Math.min(
+                minutesSinceMidnight(b.endISO),
+                workingHours.endHour * 60
+            ),
+        }))
+        .filter((b) => b.end > b.start)
+        .sort((a, b) => a.start - b.start);
+
+    // merge overlaps
+    const merged: { start: number; end: number }[] = [];
+    for (const b of busyOfDay) {
+        const last = merged[merged.length - 1];
+        if (!last || b.start > last.end) merged.push({ ...b });
+        else last.end = Math.max(last.end, b.end);
+    }
+
+    const free: FreeSlot[] = [];
+    let cursor = workingHours.startHour * 60;
+
+    for (const b of merged) {
+        if (b.start > cursor) {
+            const dur = b.start - cursor;
+            if (dur >= minMinutes) {
+                free.push({
+                    startISO: `${dayISO}T${minsToHHMM(cursor)}:00`,
+                    endISO: `${dayISO}T${minsToHHMM(b.start)}:00`,
+                });
+            }
+        }
+        cursor = Math.max(cursor, b.end);
+    }
+
+    if (cursor < workingHours.endHour * 60) {
+        const dur = workingHours.endHour * 60 - cursor;
+        if (dur >= minMinutes) {
+            free.push({
+                startISO: `${dayISO}T${minsToHHMM(cursor)}:00`,
+                endISO: `${dayISO}T${minsToHHMM(workingHours.endHour * 60)}:00`,
+            });
+        }
+    }
+
+    return free;
+}
+
+/** ===== Page ===== */
+
 export default function PlanningPage() {
-    /**
-     * loading : vrai quand on charge les activités privées
-     * items : liste des activités privées
-     * err : message d’erreur éventuel à afficher
-     */
     const [loading, setLoading] = useState(true);
     const [items, setItems] = useState<Activity[]>([]);
     const [err, setErr] = useState<string | null>(null);
 
-    /**
-     * schoolEvents : liste des cours importés via le .ics
-     */
     const [schoolEvents, setSchoolEvents] = useState<IcsEvent[]>([]);
 
-    /**
-     * saving : vrai pendant l’ajout d’une activité
-     * form : état du formulaire (champs contrôlés)
-     */
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState<FormState>({
         nomActivite: "",
@@ -107,14 +202,15 @@ export default function PlanningPage() {
         heureFin: "19:00",
     });
 
-    /**
-     * reloadActivities :
-     * Recharge les activités privées depuis le service.
-     * - met loading à true
-     * - tente de charger
-     * - affiche un message d’erreur si besoin
-     * - remet loading à false
-     */
+    // semaine affichée (lundi)
+    const [weekStartISO, setWeekStartISO] = useState(() =>
+        startOfWeekMonday(todayISO())
+    );
+    const days = useMemo(
+        () => [0, 1, 2, 3, 4, 5, 6].map((i) => addDaysISO(weekStartISO, i)),
+        [weekStartISO]
+    );
+
     async function reloadActivities() {
         setLoading(true);
         setErr(null);
@@ -128,87 +224,112 @@ export default function PlanningPage() {
         }
     }
 
-    /**
-     * reloadSchool :
-     * Recharge les cours importés.
-     * Ici, si ça échoue ce n'est pas "bloquant", donc on n'affiche pas d'erreur.
-     */
     async function reloadSchool() {
         try {
             const ev = await getSchoolEvents();
             setSchoolEvents(ev);
         } catch {
-            // non critique : on garde silencieux
+            // non critique
         }
     }
 
-    /**
-     * useEffect(..., [])
-     * -> exécuté une seule fois au chargement de la page
-     *
-     * On charge :
-     * - activités privées
-     * - cours importés
-     */
     useEffect(() => {
         void reloadActivities();
         void reloadSchool();
     }, []);
 
-    /**
-     * grouped :
-     * Regroupe les activités privées par date pour un affichage plus lisible.
-     *
-     * Exemple :
-     * items = [ (12.01 Sport), (12.01 Job), (13.01 Sport) ]
-     * grouped = [
-     *   ["2026-01-12", [Sport, Job]],
-     *   ["2026-01-13", [Sport]]
-     * ]
-     *
-     * useMemo : on ne recalcule que si items change.
-     */
-    const grouped = useMemo(() => {
-        const map = new Map<string, Activity[]>();
+    const busyAll: BusySlot[] = useMemo(() => {
+        const schoolBusy = toBusyFromIcs(schoolEvents);
+        const privateBusy = toBusyFromActivities(items);
+        return [...schoolBusy, ...privateBusy];
+    }, [schoolEvents, items]);
 
-        // On remplit la map date -> activités
+    const freeByDay: Record<string, FreeSlot[]> = useMemo(() => {
+        const out: Record<string, FreeSlot[]> = {};
+        for (const d of days) {
+            out[d] = generateFreeSlotsForDay({
+                dayISO: d,
+                busy: busyAll,
+                workingHours: { startHour: 8, endHour: 18 },
+                minMinutes: 20,
+            });
+        }
+        return out;
+    }, [days, busyAll]);
+
+    const blocksByDay: Record<string, CalendarBlock[]> = useMemo(() => {
+        const out: Record<string, CalendarBlock[]> = {};
+        for (const d of days) out[d] = [];
+
+        // free blocks (en fond)
+        for (const d of days) {
+            for (const f of freeByDay[d] ?? []) {
+                out[d].push({
+                    id: `free-${f.startISO}-${f.endISO}`,
+                    dayISO: d,
+                    startMin: minutesSinceMidnight(f.startISO),
+                    endMin: minutesSinceMidnight(f.endISO),
+                    title: "Libre",
+                    kind: "free",
+                });
+            }
+        }
+
+        // school blocks
+        for (const e of schoolEvents) {
+            const d = e.startISO.slice(0, 10);
+            if (!out[d]) continue;
+            out[d].push({
+                id: `school-${e.startISO}-${e.endISO}-${e.summary}`,
+                dayISO: d,
+                startMin: minutesSinceMidnight(e.startISO),
+                endMin: minutesSinceMidnight(e.endISO),
+                title: e.summary || "Cours",
+                subtitle: e.location,
+                kind: "school",
+            });
+        }
+
+        // private blocks
         for (const a of items) {
-            if (!map.has(a.date)) map.set(a.date, []);
-            map.get(a.date)!.push(a);
+            const d = a.date;
+            if (!out[d]) continue;
+            out[d].push({
+                id: `priv-${a.numeroActivites}`,
+                activityId: a.numeroActivites,
+                dayISO: d,
+                startMin:
+                    Number(a.heureDebut.slice(0, 2)) * 60 +
+                    Number(a.heureDebut.slice(3, 5)),
+                endMin:
+                    Number(a.heureFin.slice(0, 2)) * 60 + Number(a.heureFin.slice(3, 5)),
+                title: a.nomActivite,
+                subtitle: "Privé",
+                kind: "private",
+            });
         }
 
-        // On trie les activités de chaque jour par heure de début
-        for (const [d, arr] of map.entries()) {
-            arr.sort((x, y) => x.heureDebut.localeCompare(y.heureDebut));
-            map.set(d, arr);
+        // tri : free derrière
+        for (const d of days) {
+            out[d].sort((a, b) => {
+                const pri = (k: CalendarBlock["kind"]) => (k === "free" ? 0 : 1);
+                const p = pri(a.kind) - pri(b.kind);
+                if (p !== 0) return p;
+                return a.startMin - b.startMin;
+            });
         }
 
-        // On transforme la map en tableau trié par date
-        return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-    }, [items]);
+        return out;
+    }, [days, freeByDay, schoolEvents, items]);
 
-    /**
-     * canSubmit :
-     * Détermine si le formulaire est valide :
-     * - nom >= 2 caractères
-     * - date présente
-     * - format heures OK
-     * - heureDebut < heureFin
-     *
-     * useMemo : recalcul seulement quand form change.
-     */
     const canSubmit = useMemo(() => {
         if (form.nomActivite.trim().length < 2) return false;
         if (!form.date) return false;
-        if (!isValidTime(form.heureDebut) || !isValidTime(form.heureFin)) return false;
+        if (!isValidTime(form.heureDebut) || !isValidTime(form.heureFin))
+            return false;
         return form.heureDebut < form.heureFin;
     }, [form]);
 
-    /**
-     * onAdd :
-     * Ajoute une activité privée via le service.
-     * Puis recharge la liste.
-     */
     async function onAdd() {
         if (!canSubmit) return;
 
@@ -223,10 +344,7 @@ export default function PlanningPage() {
                 heureFin: form.heureFin,
             });
 
-            // On vide le champ nom après ajout
-            setForm(f => ({ ...f, nomActivite: "" }));
-
-            // On recharge la liste pour voir l’activité ajoutée
+            setForm((f) => ({ ...f, nomActivite: "" }));
             await reloadActivities();
         } catch {
             setErr("Erreur lors de l’ajout.");
@@ -235,11 +353,6 @@ export default function PlanningPage() {
         }
     }
 
-    /**
-     * onDelete :
-     * Supprime une activité privée (par id).
-     * Puis recharge la liste.
-     */
     async function onDelete(id: number) {
         setErr(null);
         try {
@@ -250,72 +363,155 @@ export default function PlanningPage() {
         }
     }
 
-    /**
-     * Rendu JSX
-     */
     return (
         <section style={card}>
-            {/* Titre + lien retour */}
             <div style={topRow}>
                 <div>
                     <h2 style={{ ...h2, marginBottom: 4 }}>Planning</h2>
-                    <div style={muted}>Activités personnelles + horaire scolaire importé (.ics)</div>
+                    <div style={muted}>
+                        Vue semaine (style Outlook) • cours (.ics) + activités privées +
+                        créneaux libres
+                    </div>
                 </div>
-                <Link to="/dashboard" style={btnLink}>← Dashboard</Link>
+                <Link to="/dashboard" style={btnLink}>
+                    ← Dashboard
+                </Link>
             </div>
 
-            {/* ====================
-                Formulaire activités privées
-                ==================== */}
-            <div style={{ marginTop: 14 }}>
+            {/* Barre semaine */}
+            <div style={weekBar}>
+                <button
+                    style={btn}
+                    onClick={() => setWeekStartISO(addDaysISO(weekStartISO, -7))}
+                >
+                    ←
+                </button>
+
+                <div style={{ fontWeight: 900 }}>
+                    Semaine du{" "}
+                    <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+            {weekStartISO}
+          </span>
+                </div>
+
+                <button
+                    style={btn}
+                    onClick={() => setWeekStartISO(addDaysISO(weekStartISO, 7))}
+                >
+                    →
+                </button>
+
+                <button
+                    style={btn}
+                    onClick={() => setWeekStartISO(startOfWeekMonday(todayISO()))}
+                >
+                    Aujourd’hui
+                </button>
+
+                <input
+                    style={input}
+                    type="date"
+                    value={weekStartISO}
+                    onChange={(e) => setWeekStartISO(startOfWeekMonday(e.target.value))}
+                />
+            </div>
+
+            {/* Calendrier */}
+            <div style={{ marginTop: 12 }}>
+                <h3 style={h3}>Calendrier (semaine)</h3>
+                <WeekCalendar
+                    days={days}
+                    blocksByDay={blocksByDay}
+                    onDeleteActivity={onDelete}
+                />
+            </div>
+
+            {/* Import .ics */}
+            <div style={{ marginTop: 18 }}>
+                <h3 style={h3}>Horaire scolaire (.ics)</h3>
+
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    <input
+                        type="file"
+                        accept=".ics,text/calendar"
+                        onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+
+                            const text = await file.text();
+                            const ev = await importSchoolIcs(text);
+                            setSchoolEvents(ev);
+                            e.currentTarget.value = "";
+                        }}
+                    />
+
+                    <button
+                        style={btnDanger}
+                        onClick={async () => {
+                            await clearSchoolEvents();
+                            setSchoolEvents([]);
+                        }}
+                    >
+                        Effacer l’horaire
+                    </button>
+
+                    <span style={muted}>
+            Cours importés : <b>{schoolEvents.length}</b>
+          </span>
+                </div>
+            </div>
+
+            {/* Formulaire activités */}
+            <div style={{ marginTop: 18 }}>
                 <h3 style={h3}>Ajouter une activité (privée)</h3>
 
                 <div style={formGrid}>
-                    {/* Champ nom */}
                     <div style={field}>
                         <div style={label}>Nom</div>
                         <input
                             style={input}
                             placeholder="Ex: Sport, job, rendez-vous..."
                             value={form.nomActivite}
-                            onChange={(e) => setForm(f => ({ ...f, nomActivite: e.target.value }))}
+                            onChange={(e) =>
+                                setForm((f) => ({ ...f, nomActivite: e.target.value }))
+                            }
                         />
                     </div>
 
-                    {/* Champ date */}
                     <div style={field}>
                         <div style={label}>Date</div>
                         <input
                             style={input}
                             type="date"
                             value={form.date}
-                            onChange={(e) => setForm(f => ({ ...f, date: e.target.value }))}
+                            onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
                         />
                     </div>
 
-                    {/* Champ heure début */}
                     <div style={field}>
                         <div style={label}>Début</div>
                         <input
                             style={input}
                             type="time"
                             value={form.heureDebut}
-                            onChange={(e) => setForm(f => ({ ...f, heureDebut: e.target.value }))}
+                            onChange={(e) =>
+                                setForm((f) => ({ ...f, heureDebut: e.target.value }))
+                            }
                         />
                     </div>
 
-                    {/* Champ heure fin */}
                     <div style={field}>
                         <div style={label}>Fin</div>
                         <input
                             style={input}
                             type="time"
                             value={form.heureFin}
-                            onChange={(e) => setForm(f => ({ ...f, heureFin: e.target.value }))}
+                            onChange={(e) =>
+                                setForm((f) => ({ ...f, heureFin: e.target.value }))
+                            }
                         />
                     </div>
 
-                    {/* Bouton ajouter */}
                     <div style={{ display: "flex", alignItems: "flex-end" }}>
                         <button
                             style={btnPrimary}
@@ -327,141 +523,169 @@ export default function PlanningPage() {
                     </div>
                 </div>
 
-                {/* Petit message d’aide si formulaire invalide */}
                 {!canSubmit && (
                     <div style={{ marginTop: 8, ...muted }}>
                         Astuce : un nom (≥ 2 caractères) + une heure de fin après l’heure de début.
                     </div>
                 )}
 
-                {/* Affichage d’erreur si nécessaire */}
                 {err && <div style={{ marginTop: 10, ...errorBox }}>{err}</div>}
             </div>
 
-            {/* ====================
-                Import .ics (horaire scolaire)
-                ==================== */}
+            {/* Debug : créneaux libres */}
             <div style={{ marginTop: 18 }}>
-                <h3 style={h3}>Horaire scolaire (.ics)</h3>
+                <h3 style={h3}>Créneaux libres détectés (semaine)</h3>
 
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                    {/* Input file :
-                        - accept limite les fichiers sélectionnables à .ics
-                        - onChange se déclenche quand l'utilisateur choisit un fichier
-                    */}
-                    <input
-                        type="file"
-                        accept=".ics,text/calendar"
-                        onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (!file) return;
-
-                            // On lit le fichier côté navigateur
-                            const text = await file.text();
-
-                            // On demande au service d'importer (parser + stocker) les événements
-                            const ev = await importSchoolIcs(text);
-
-                            // On met à jour le state avec les événements importés
-                            setSchoolEvents(ev);
-
-                            // On reset l'input pour pouvoir réimporter le même fichier si besoin
-                            e.currentTarget.value = "";
-                        }}
-                    />
-
-                    {/* Bouton "effacer l’horaire" */}
-                    <button
-                        style={btnDanger}
-                        onClick={async () => {
-                            await clearSchoolEvents();
-                            setSchoolEvents([]);
-                        }}
-                    >
-                        Effacer l’horaire
-                    </button>
-
-                    <span style={muted}>Cours importés : <b>{schoolEvents.length}</b></span>
-                </div>
-
-                {/* Aperçu des cours importés (max 8 pour ne pas surcharger) */}
-                {schoolEvents.length > 0 && (
-                    <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-                        {schoolEvents.slice(0, 8).map((c, i) => (
-                            <div key={i} style={row}>
-                                <div style={{ flex: 1 }}>
-                                    <div style={{ fontWeight: 800 }}>{c.summary}</div>
-                                    <div style={muted}>
-                                        {c.startISO.slice(0, 10)} • {c.startISO.slice(11, 16)} → {c.endISO.slice(11, 16)}
-                                        {c.location ? ` • ${c.location}` : ""}
+                {days.map((d) => (
+                    <div key={d} style={dayListCard}>
+                        <div style={{ fontWeight: 900, marginBottom: 6 }}>{d}</div>
+                        {(freeByDay[d]?.length ?? 0) === 0 ? (
+                            <div style={muted}>Aucun créneau ≥ 20 min entre 08:00 et 18:00.</div>
+                        ) : (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                {freeByDay[d].map((s, i) => (
+                                    <div key={i} style={miniRow}>
+                                        <div style={{ fontWeight: 800 }}>
+                                            {timeHHMM(s.startISO)} → {timeHHMM(s.endISO)}
+                                        </div>
+                                        <div style={muted}>Libre</div>
                                     </div>
-                                </div>
+                                ))}
                             </div>
-                        ))}
-                        {schoolEvents.length > 8 && (
-                            <div style={muted}>… +{schoolEvents.length - 8} autres cours</div>
                         )}
                     </div>
-                )}
-            </div>
-
-            {/* ====================
-                Liste des activités privées (groupées par date)
-                ==================== */}
-            <div style={{ marginTop: 18 }}>
-                <h3 style={h3}>Mes activités (privées)</h3>
-
-                {loading ? (
-                    <div style={muted}>Chargement…</div>
-                ) : grouped.length === 0 ? (
-                    <div style={muted}>Aucune activité enregistrée.</div>
-                ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                        {grouped.map(([date, arr]) => (
-                            <div key={date} style={dayCard}>
-                                <div style={dayHeader}>
-                                    <div style={{ fontWeight: 900 }}>{date}</div>
-                                    {/* jour vient potentiellement du backend (si présent) */}
-                                    <div style={muted}>{arr[0]?.jour ?? ""}</div>
-                                </div>
-
-                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                                    {arr.map((a) => (
-                                        <div key={a.numeroActivites} style={row}>
-                                            <div style={{ flex: 1 }}>
-                                                <div style={{ fontWeight: 800 }}>{a.nomActivite}</div>
-                                                <div style={muted}>
-                                                    {a.heureDebut} → {a.heureFin}
-                                                </div>
-                                            </div>
-
-                                            <button
-                                                style={btnDanger}
-                                                onClick={() => void onDelete(a.numeroActivites)}
-                                            >
-                                                Supprimer
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
-
-            {/* Note : ce que vous ferez ensuite (fusion pour créneaux libres) */}
-            <div style={{ marginTop: 14, ...note }}>
-                Prochaine étape : combiner <b>horaire scolaire</b> + <b>activités privées</b> pour calculer automatiquement les créneaux
-                disponibles de révision.
+                ))}
             </div>
         </section>
     );
 }
 
-/* =======================
-   STYLES
-   ======================= */
+/** ===== Calendrier semaine (style Outlook simplifié) ===== */
+
+function WeekCalendar(props: {
+    days: string[];
+    blocksByDay: Record<string, CalendarBlock[]>;
+    onDeleteActivity: (id: number) => void;
+}) {
+    const { days, blocksByDay, onDeleteActivity } = props;
+
+    const startHour = 8;
+    const endHour = 18;
+    const hourCount = endHour - startHour;
+    const pxPerHour = 60;
+    const totalHeight = hourCount * pxPerHour;
+
+    const hourLabels = Array.from({ length: hourCount + 1 }, (_, i) => startHour + i);
+// Affichage ISO : getDay() => 0=Dim,1=Lun,...6=Sam
+// On veut afficher en mode "lundi d'abord" dans l'UI
+    const dayNames: Record<number, string> = {
+        1: "Lun",
+        2: "Mar",
+        3: "Mer",
+        4: "Jeu",
+        5: "Ven",
+        6: "Sam",
+        0: "Dim",
+    };
+
+    function dayLabel(dISO: string) {
+        const dt = new Date(`${dISO}T00:00:00`);
+        return `${dayNames[dt.getDay()]} ${dISO.slice(8, 10)}`;
+    }
+
+    return (
+        <div style={calWrap}>
+            {/* Header */}
+            <div style={calHeader}>
+                <div style={timeColHeader} />
+                {days.map((d) => (
+                    <div key={d} style={dayHeaderCell}>
+                        {dayLabel(d)}
+                    </div>
+                ))}
+            </div>
+
+            {/* Body */}
+            <div style={calBody}>
+                {/* Time column */}
+                <div style={{ ...timeCol, height: totalHeight }}>
+                    {hourLabels.map((h) => (
+                        <div key={h} style={{ ...timeLabel, height: pxPerHour }}>
+                            {String(h).padStart(2, "0")}:00
+                        </div>
+                    ))}
+                </div>
+
+                {/* Day columns */}
+                {days.map((d) => (
+                    <div key={d} style={{ ...dayCol, height: totalHeight }}>
+                        {/* hour grid */}
+                        {Array.from({ length: hourCount }, (_, i) => (
+                            <div
+                                key={i}
+                                style={{
+                                    position: "absolute",
+                                    left: 0,
+                                    right: 0,
+                                    top: i * pxPerHour,
+                                    height: pxPerHour,
+                                    borderTop: "1px solid rgba(0,0,0,0.06)",
+                                }}
+                            />
+                        ))}
+
+                        {(blocksByDay[d] ?? []).map((b) => {
+                            const start = Math.max(b.startMin, startHour * 60);
+                            const end = Math.min(b.endMin, endHour * 60);
+                            if (end <= start) return null;
+
+                            const top = ((start - startHour * 60) / 60) * pxPerHour;
+                            const height = ((end - start) / 60) * pxPerHour;
+
+                            if (b.kind === "free") {
+                                return (
+                                    <div
+                                        key={b.id}
+                                        style={{ ...freeBlock, top, height }}
+                                        title={`Libre ${minsToHHMM(start)} → ${minsToHHMM(end)}`}
+                                    />
+                                );
+                            }
+
+                            const style = b.kind === "school" ? schoolBlock : privateBlock;
+
+                            return (
+                                <div
+                                    key={b.id}
+                                    style={{ ...style, top, height }}
+                                    title={`${b.title} ${minsToHHMM(start)} → ${minsToHHMM(end)}`}
+                                >
+                                    <div style={blockTitle}>{b.title}</div>
+                                    <div style={blockMeta}>
+                                        {minsToHHMM(start)} → {minsToHHMM(end)}
+                                    </div>
+                                    {b.subtitle && <div style={blockSub}>{b.subtitle}</div>}
+
+                                    {b.kind === "private" && typeof b.activityId === "number" && (
+                                        <button
+                                            style={miniDelete}
+                                            onClick={() => onDeleteActivity(b.activityId!)}
+                                            title="Supprimer"
+                                        >
+                                            ✕
+                                        </button>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+/** ===== Styles ===== */
 
 const card: CSSProperties = {
     border: "1px solid rgba(0,0,0,0.12)",
@@ -478,18 +702,21 @@ const topRow: CSSProperties = {
     alignItems: "center",
 };
 
+const weekBar: CSSProperties = {
+    marginTop: 10,
+    display: "flex",
+    gap: 8,
+    alignItems: "center",
+    flexWrap: "wrap",
+    padding: 10,
+    border: "1px solid rgba(0,0,0,0.10)",
+    borderRadius: 14,
+    background: "rgba(0,0,0,0.02)",
+};
+
 const h2: CSSProperties = { margin: "0 0 10px 0", fontSize: 18 };
 const h3: CSSProperties = { margin: "0 0 10px 0", fontSize: 14 };
 const muted: CSSProperties = { opacity: 0.75, fontSize: 13 };
-
-const note: CSSProperties = {
-    border: "1px dashed rgba(0,0,0,0.18)",
-    borderRadius: 12,
-    padding: 10,
-    fontSize: 13,
-    opacity: 0.9,
-    background: "rgba(0,0,0,0.03)",
-};
 
 const errorBox: CSSProperties = {
     border: "1px solid rgba(0,0,0,0.18)",
@@ -518,29 +745,6 @@ const input: CSSProperties = {
     outline: "none",
 };
 
-const dayCard: CSSProperties = {
-    border: "1px solid rgba(0,0,0,0.10)",
-    borderRadius: 14,
-    padding: 12,
-    background: "white",
-};
-
-const dayHeader: CSSProperties = {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 10,
-    alignItems: "baseline",
-    marginBottom: 8,
-};
-
-const row: CSSProperties = {
-    display: "flex",
-    gap: 10,
-    alignItems: "center",
-    padding: "10px 0",
-    borderBottom: "1px solid rgba(0,0,0,0.08)",
-};
-
 const btnLink: CSSProperties = {
     padding: "8px 10px",
     borderRadius: 10,
@@ -549,6 +753,15 @@ const btnLink: CSSProperties = {
     color: "#111",
     cursor: "pointer",
     textDecoration: "none",
+};
+
+const btn: CSSProperties = {
+    padding: "8px 10px",
+    borderRadius: 10,
+    border: "1px solid rgba(0,0,0,0.18)",
+    background: "white",
+    color: "#111",
+    cursor: "pointer",
 };
 
 const btnPrimary: CSSProperties = {
@@ -567,4 +780,145 @@ const btnDanger: CSSProperties = {
     background: "white",
     color: "#111",
     cursor: "pointer",
+};
+
+/* Calendar layout */
+const calWrap: CSSProperties = {
+    border: "1px solid rgba(0,0,0,0.10)",
+    borderRadius: 14,
+    overflow: "hidden",
+};
+
+const calHeader: CSSProperties = {
+    display: "grid",
+    gridTemplateColumns: "70px repeat(7, 1fr)",
+    background: "rgba(0,0,0,0.03)",
+    borderBottom: "1px solid rgba(0,0,0,0.10)",
+};
+
+const timeColHeader: CSSProperties = { height: 40 };
+
+const dayHeaderCell: CSSProperties = {
+    height: 40,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: 900,
+    fontSize: 13,
+    borderLeft: "1px solid rgba(0,0,0,0.06)",
+};
+
+const calBody: CSSProperties = {
+    display: "grid",
+    gridTemplateColumns: "70px repeat(7, 1fr)",
+};
+
+const timeCol: CSSProperties = {
+    position: "relative",
+    background: "white",
+    borderRight: "1px solid rgba(0,0,0,0.10)",
+};
+
+const timeLabel: CSSProperties = {
+    fontSize: 12,
+    opacity: 0.75,
+    padding: "6px 8px",
+    borderTop: "1px solid rgba(0,0,0,0.06)",
+    boxSizing: "border-box",
+};
+
+const dayCol: CSSProperties = {
+    position: "relative",
+    background: "white",
+    borderLeft: "1px solid rgba(0,0,0,0.06)",
+};
+
+const freeBlock: CSSProperties = {
+    position: "absolute",
+    left: 6,
+    right: 6,
+    borderRadius: 12,
+    background: "rgba(0,0,0,0.03)",
+    border: "1px dashed rgba(0,0,0,0.10)",
+};
+
+const schoolBlock: CSSProperties = {
+    position: "absolute",
+    left: 8,
+    right: 8,
+    borderRadius: 12,
+    padding: 8,
+    boxSizing: "border-box",
+    background: "rgba(46, 204, 113, 0.18)",
+    border: "1px solid rgba(46, 204, 113, 0.35)",
+    color: "#111",
+    overflow: "hidden",
+};
+
+const privateBlock: CSSProperties = {
+    position: "absolute",
+    left: 8,
+    right: 8,
+    borderRadius: 12,
+    padding: 8,
+    boxSizing: "border-box",
+    background: "rgba(52, 152, 219, 0.16)",
+    border: "1px solid rgba(52, 152, 219, 0.35)",
+    color: "#111",
+    overflow: "hidden",
+};
+
+const blockTitle: CSSProperties = {
+    fontWeight: 900,
+    fontSize: 12,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+};
+
+const blockMeta: CSSProperties = {
+    fontSize: 12,
+    opacity: 0.85,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+};
+
+const blockSub: CSSProperties = {
+    fontSize: 11,
+    opacity: 0.75,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+};
+
+const miniDelete: CSSProperties = {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    border: "none",
+    background: "rgba(0,0,0,0.08)",
+    borderRadius: 8,
+    cursor: "pointer",
+    padding: "2px 6px",
+    fontSize: 12,
+    lineHeight: 1,
+};
+
+const dayListCard: CSSProperties = {
+    border: "1px solid rgba(0,0,0,0.10)",
+    borderRadius: 14,
+    padding: 12,
+    background: "white",
+    marginBottom: 10,
+};
+
+const miniRow: CSSProperties = {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 10,
+    padding: "8px 0",
+    borderBottom: "1px solid rgba(0,0,0,0.06)",
 };
