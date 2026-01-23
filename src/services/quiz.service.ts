@@ -1,9 +1,9 @@
+// src/services/quiz.service.ts
 import { api } from "./http";
 import type { Question, Quiz, QuizResult } from "../types";
 
-// D'après votre échange : GET /quiz/{id}
 type ApiQuiz = {
-    id: number;             // backend "id" dans l'exemple
+    id: number;
     nom: string;
     type: "quiz" | "flashcard";
     duree?: number;
@@ -12,7 +12,6 @@ type ApiQuiz = {
     image?: string;
 };
 
-// Questions : d'après l'exemple "id/enonce/reponse/ordre"
 type ApiQuestion = {
     id: number;
     enonce: string;
@@ -22,10 +21,8 @@ type ApiQuestion = {
 };
 
 export async function getQuiz(quizId: number): Promise<Quiz | null> {
-    // si l'API renvoie 404, api() lèvera une erreur.
-    // On capture pour retourner null (comportement actuel).
     try {
-        const q = await api<ApiQuiz>(`/api/quiz/${quizId}`);
+        const q = await api.get<ApiQuiz>(`/api/quiz/${quizId}`);
         return {
             numeroQuiz: q.id,
             nomQuiz: q.nom,
@@ -41,8 +38,7 @@ export async function getQuiz(quizId: number): Promise<Quiz | null> {
 }
 
 export async function listQuestions(quizId: number): Promise<Question[]> {
-    // ⚠️ endpoint à confirmer : souvent /api/quiz/{id}/questions
-    const qs = await api<ApiQuestion[]>(`/api/quiz/${quizId}/questions`);
+    const qs = await api.get<ApiQuestion[]>(`/api/quiz/${quizId}/questions`);
     return qs
         .slice()
         .sort((a, b) => a.ordre - b.ordre)
@@ -55,24 +51,27 @@ export async function listQuestions(quizId: number): Promise<Question[]> {
         }));
 }
 
-// Résultats / tentative quiz : pas encore complètement clair dans le nouveau MCD.
-// On laisse en TODO (on peut garder mock temporairement ou bloquer la feature).
-export async function submitQuiz(_quizId: number, _score: number): Promise<QuizResult> {
-    // TODO: remplacer par endpoint backend (Tentative Quiz / Passer / Exercer selon votre MCD final)
+// TODO backend
+// - Tentative Quiz / Passer / Exercer (MCD)
+export async function submitQuiz(quizId: number, score: number): Promise<QuizResult> {
+    // On “consomme” les paramètres pour éviter le warning no-unused-vars,
+    // tout en gardant une signature compatible avec le frontend.
+    void quizId;
+    void score;
+
     throw new Error("submitQuiz: endpoint backend non défini (TODO)");
 }
 
 export async function listMyResults(): Promise<QuizResult[]> {
-    // TODO: endpoint backend non défini (nouveau MCD: Tentative Quiz / Exercer)
     return [];
 }
 
 export async function listAllQuizzes(): Promise<Quiz[]> {
-    // TODO: endpoint backend global (ex: GET /quiz)
     return [];
 }
 
-export async function listQuizzesByModule(_moduleNom: string): Promise<Quiz[]> {
-    // TODO: endpoint backend pour lister les quiz d'un module (encore flou)
+export async function listQuizzesByModule(moduleNom: string): Promise<Quiz[]> {
+    void moduleNom;
     return [];
 }
+
