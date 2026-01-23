@@ -49,7 +49,7 @@ class AuthController extends Controller
             return response()->json($validator->errors(), 400);
         }
 
-        $user = User::create(['email' => request('email'), 'password' => Hash::make(request('password')), 'first_name' => request('first_name'), 'last_name' => request('last_name'), 'role_name' => 'student']);
+        $user = User::create(['email' => request('email'), 'password' => Hash::make(request('password')), 'first_name' => request('first_name'), 'last_name' => request('last_name'), 'role_name' => 'student', 'entry-year' => date('Y')]);
         $user->setRememberToken(Str::random(10));
         $user->save();
 

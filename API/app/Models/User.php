@@ -30,6 +30,7 @@ class User extends Authenticatable
         'role_name',
         'class_name',
         'class_year',
+        'entry-year',
         'password',
         'remember_token',
     ];
@@ -69,5 +70,10 @@ class User extends Authenticatable
     public function role(): HasOne
     {
         return $this->hasOne(Role::class);
+    }
+
+    public function class(): HasOne
+    {
+        return $this->hasOne(StudentClass::class);
     }
 }

@@ -19,6 +19,7 @@ return new class extends Migration
 
             $table->string('class_id', 50)->nullable();
             $table->string('class_year', 50)->nullable();
+            $table->integer('entry-year');
             $table->string('role_name', 100);
 
             $table->index('role_name');
