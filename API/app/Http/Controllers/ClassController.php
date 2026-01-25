@@ -38,6 +38,8 @@ class ClassController extends Controller
 
     public function index() : JsonResponse
     {
-        return response()->json(StudentClass::all());
+        return response()->json([
+            'data' => StudentClass::all()
+        ]);
     }
 }
