@@ -10,9 +10,9 @@ import type { IcsEvent } from "../lib/ics";
 
 type FormState = {
     nomActivite: string;
-    date: string;       // YYYY-MM-DD
+    date: string; // YYYY-MM-DD
     heureDebut: string; // HH:MM
-    heureFin: string;   // HH:MM
+    heureFin: string; // HH:MM
 };
 
 type BusySlot = {
@@ -28,13 +28,12 @@ type FreeSlot = {
 
 type CalendarBlock = {
     id: string;
-    dayISO: string;      // YYYY-MM-DD
-    startMin: number;    // minutes depuis minuit
+    dayISO: string; // YYYY-MM-DD
+    startMin: number; // minutes depuis minuit
     endMin: number;
     title: string;
     subtitle?: string;
     kind: "school" | "private" | "free";
-    // optionnel : si bloc supprimable (activité privée)
     activityId?: number;
 };
 
@@ -191,6 +190,13 @@ export default function PlanningPage() {
 
     const [schoolEvents, setSchoolEvents] = useState<IcsEvent[]>([]);
 
+    // ✅ Messages UI import ICS
+    const [icsErr, setIcsErr] = useState<string | null>(null);
+    const [icsInfo, setIcsInfo] = useState<string | null>(null);
+
+    // ✅ Message UI validation formulaire
+    const [formTouched, setFormTouched] = useState(false);
+
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState<FormState>({
         nomActivite: "",
@@ -206,10 +212,7 @@ export default function PlanningPage() {
      * ✅ IMPORTANT : ordre des colonnes = LUNDI → DIMANCHE
      * C'est CE tableau qui contrôle l'ordre d'affichage des jours.
      */
-    const days = useMemo(
-        () => [0, 1, 2, 3, 4, 5, 6].map((i) => addDaysISO(weekStartISO, i)),
-        [weekStartISO]
-    );
+    const days = useMemo(() => [0, 1, 2, 3, 4, 5, 6].map((i) => addDaysISO(weekStartISO, i)), [weekStartISO]);
 
     async function reloadActivities() {
         setErr(null);
@@ -324,7 +327,13 @@ export default function PlanningPage() {
     }, [form]);
 
     async function onAdd() {
-        if (!canSubmit) return;
+        // ✅ force l'affichage des erreurs de validation
+        setFormTouched(true);
+
+        if (!canSubmit) {
+            setErr("Impossible d’ajouter l’activité : vérifie les champs (fin après début).");
+            return;
+        }
 
         setSaving(true);
         setErr(null);
@@ -363,30 +372,31 @@ export default function PlanningPage() {
                     <h2 style={{ ...h2, marginBottom: 4 }}>Planning</h2>
                     <div style={muted}>Vue semaine (Lun → Dim) • cours (.ics) + activités privées + créneaux libres</div>
                 </div>
-                <Link to="/dashboard" style={btnLink}>← Dashboard</Link>
+                <Link to="/dashboard" style={btnLink}>
+                    ← Dashboard
+                </Link>
             </div>
 
             {/* Barre semaine */}
             <div style={weekBar}>
-                <button style={btn} onClick={() => setWeekStartISO(addDaysISO(weekStartISO, -7))}>←</button>
+                <button style={btn} onClick={() => setWeekStartISO(addDaysISO(weekStartISO, -7))}>
+                    ←
+                </button>
 
                 <div style={{ fontWeight: 900 }}>
                     Semaine du{" "}
-                    <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
-                        {weekStartISO}
-                    </span>
+                    <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>{weekStartISO}</span>
                 </div>
 
-                <button style={btn} onClick={() => setWeekStartISO(addDaysISO(weekStartISO, 7))}>→</button>
+                <button style={btn} onClick={() => setWeekStartISO(addDaysISO(weekStartISO, 7))}>
+                    →
+                </button>
 
-                <button style={btn} onClick={() => setWeekStartISO(startOfWeekMonday(todayISO()))}>Aujourd’hui</button>
+                <button style={btn} onClick={() => setWeekStartISO(startOfWeekMonday(todayISO()))}>
+                    Aujourd’hui
+                </button>
 
-                <input
-                    style={input}
-                    type="date"
-                    value={weekStartISO}
-                    onChange={(e) => setWeekStartISO(startOfWeekMonday(e.target.value))}
-                />
+                <input style={input} type="date" value={weekStartISO} onChange={(e) => setWeekStartISO(startOfWeekMonday(e.target.value))} />
             </div>
 
             {/* Calendrier */}
@@ -404,13 +414,37 @@ export default function PlanningPage() {
                         type="file"
                         accept=".ics,text/calendar"
                         onChange={async (e) => {
+                            setIcsErr(null);
+                            setIcsInfo(null);
+
                             const file = e.target.files?.[0];
                             if (!file) return;
 
-                            const text = await file.text();
-                            const ev = await importSchoolIcs(text);
-                            setSchoolEvents(ev);
-                            e.currentTarget.value = "";
+                            // ✅ Filtrage strict : extension + type (avec tolérance Windows)
+                            const nameOk = file.name.toLowerCase().endsWith(".ics");
+                            const typeOk = file.type === "text/calendar" || file.type === "application/octet-stream" || file.type === "";
+
+                            if (!nameOk || !typeOk) {
+                                setIcsErr("Fichier invalide. Merci de sélectionner un fichier .ics (calendrier).");
+                                e.currentTarget.value = "";
+                                return;
+                            }
+
+                            try {
+                                const text = await file.text();
+                                const ev = await importSchoolIcs(text);
+
+                                if (!ev || ev.length === 0) {
+                                    setIcsErr("Le fichier .ics a été importé, mais aucun événement n’a été détecté.");
+                                } else {
+                                    setSchoolEvents(ev);
+                                    setIcsInfo(`Import réussi : ${ev.length} cours détectés.`);
+                                }
+                            } catch {
+                                setIcsErr("Impossible d’importer ce fichier .ics (format non reconnu ou corrompu).");
+                            } finally {
+                                e.currentTarget.value = "";
+                            }
                         }}
                     />
 
@@ -419,15 +453,21 @@ export default function PlanningPage() {
                         onClick={async () => {
                             await clearSchoolEvents();
                             setSchoolEvents([]);
+                            setIcsErr(null);
+                            setIcsInfo("Horaire effacé.");
                         }}
                     >
                         Effacer l’horaire
                     </button>
 
                     <span style={muted}>
-                        Cours importés : <b>{schoolEvents.length}</b>
-                    </span>
+            Cours importés : <b>{schoolEvents.length}</b>
+          </span>
                 </div>
+
+                {/* ✅ Messages import */}
+                {icsErr && <div style={{ marginTop: 10, ...errorBox }}>{icsErr}</div>}
+                {icsInfo && <div style={{ marginTop: 10, ...infoBox }}>{icsInfo}</div>}
 
                 {/* Petit aperçu (debug) */}
                 {schoolEvents.length > 0 && (
@@ -457,7 +497,10 @@ export default function PlanningPage() {
                             style={input}
                             placeholder="Ex: Sport, job, rendez-vous..."
                             value={form.nomActivite}
-                            onChange={(e) => setForm((f) => ({ ...f, nomActivite: e.target.value }))}
+                            onChange={(e) => {
+                                setFormTouched(true);
+                                setForm((f) => ({ ...f, nomActivite: e.target.value }));
+                            }}
                         />
                     </div>
 
@@ -467,7 +510,10 @@ export default function PlanningPage() {
                             style={input}
                             type="date"
                             value={form.date}
-                            onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+                            onChange={(e) => {
+                                setFormTouched(true);
+                                setForm((f) => ({ ...f, date: e.target.value }));
+                            }}
                         />
                     </div>
 
@@ -477,7 +523,10 @@ export default function PlanningPage() {
                             style={input}
                             type="time"
                             value={form.heureDebut}
-                            onChange={(e) => setForm((f) => ({ ...f, heureDebut: e.target.value }))}
+                            onChange={(e) => {
+                                setFormTouched(true);
+                                setForm((f) => ({ ...f, heureDebut: e.target.value }));
+                            }}
                         />
                     </div>
 
@@ -487,7 +536,10 @@ export default function PlanningPage() {
                             style={input}
                             type="time"
                             value={form.heureFin}
-                            onChange={(e) => setForm((f) => ({ ...f, heureFin: e.target.value }))}
+                            onChange={(e) => {
+                                setFormTouched(true);
+                                setForm((f) => ({ ...f, heureFin: e.target.value }));
+                            }}
                         />
                     </div>
 
@@ -498,9 +550,10 @@ export default function PlanningPage() {
                     </div>
                 </div>
 
-                {!canSubmit && (
-                    <div style={{ marginTop: 8, ...muted }}>
-                        Astuce : un nom (≥ 2 caractères) + une heure de fin après l’heure de début.
+                {/* ✅ Message explicite si invalide */}
+                {formTouched && !canSubmit && (
+                    <div style={{ marginTop: 10, ...errorBox }}>
+                        Vérifie les champs : nom ≥ 2 caractères et l’heure de fin doit être après l’heure de début.
                     </div>
                 )}
 
@@ -552,12 +605,6 @@ function WeekCalendar(props: {
 
     const hourLabels = Array.from({ length: hourCount + 1 }, (_, i) => startHour + i);
 
-    /**
-     * ✅ IMPORTANT :
-     * L'ordre d'affichage dépend de "days.map(...)".
-     * Donc si days = [lun..dim], la grille est lun..dim.
-     * Ici on ne fait QUE fabriquer un label.
-     */
     function dayLabel(dISO: string) {
         const dt = new Date(`${dISO}T00:00:00`);
         const day = dt.getDay(); // 0=Dim,1=Lun,...6=Sam
@@ -615,23 +662,13 @@ function WeekCalendar(props: {
                             const height = ((end - start) / 60) * pxPerHour;
 
                             if (b.kind === "free") {
-                                return (
-                                    <div
-                                        key={b.id}
-                                        style={{ ...freeBlock, top, height }}
-                                        title={`Libre ${minsToHHMM(start)} → ${minsToHHMM(end)}`}
-                                    />
-                                );
+                                return <div key={b.id} style={{ ...freeBlock, top, height }} title={`Libre ${minsToHHMM(start)} → ${minsToHHMM(end)}`} />;
                             }
 
                             const style = b.kind === "school" ? schoolBlock : privateBlock;
 
                             return (
-                                <div
-                                    key={b.id}
-                                    style={{ ...style, top, height }}
-                                    title={`${b.title} ${minsToHHMM(start)} → ${minsToHHMM(end)}`}
-                                >
+                                <div key={b.id} style={{ ...style, top, height }} title={`${b.title} ${minsToHHMM(start)} → ${minsToHHMM(end)}`}>
                                     <div style={blockTitle}>{b.title}</div>
                                     <div style={blockMeta}>
                                         {minsToHHMM(start)} → {minsToHHMM(end)}
@@ -639,11 +676,7 @@ function WeekCalendar(props: {
                                     {b.subtitle && <div style={blockSub}>{b.subtitle}</div>}
 
                                     {b.kind === "private" && typeof b.activityId === "number" && (
-                                        <button
-                                            style={miniDelete}
-                                            onClick={() => onDeleteActivity(b.activityId!)}
-                                            title="Supprimer"
-                                        >
+                                        <button style={miniDelete} onClick={() => onDeleteActivity(b.activityId!)} title="Supprimer">
                                             ✕
                                         </button>
                                     )}
@@ -695,6 +728,14 @@ const errorBox: CSSProperties = {
     borderRadius: 12,
     padding: 10,
     background: "rgba(0,0,0,0.03)",
+    fontSize: 13,
+};
+
+const infoBox: CSSProperties = {
+    border: "1px solid rgba(0,0,0,0.12)",
+    borderRadius: 12,
+    padding: 10,
+    background: "rgba(0,0,0,0.02)",
     fontSize: 13,
 };
 
