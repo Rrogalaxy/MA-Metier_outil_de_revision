@@ -1,103 +1,63 @@
-/**
- * Import de React + hooks
- *
- * - useState : permet de stocker une valeur dans le composant (état local)
- * - useEffect : permet d'exécuter du code quand le composant se charge
- *
- * ⚠️ Note : Avec les versions récentes de React, l'import "React" n’est plus toujours obligatoire,
- * mais il ne gêne pas.
- */
-import React, { useEffect, useState } from "react";
-
-/**
- * Link (React Router) :
- * - c'est l'équivalent d'un <a href="..."> mais sans recharger la page
- * - navigation interne "single page app"
- */
+// src/pages/ModulesPage.tsx
+import React, { useEffect, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
-
-/**
- * Service (mock ou backend)
- * - listMyModules() : retourne la liste des modules de l’utilisateur (relation Travailler)
- */
 import { listMyModules } from "../services/modules.service";
-
-/**
- * Type TypeScript :
- * - UserModule représente la progression personnelle de l'élève pour un module
- *   (difficulté + prochaines alertes)
- */
 import type { UserModule } from "../types";
 
-/**
- * Composant React : ModulesPage
- *
- * Cette page est affichée quand l’URL est "/modules" (router.tsx).
- * Elle affiche les modules "personnels" de l’élève.
- */
 export default function ModulesPage() {
-    /**
-     * myModules : tableau de modules (UserModule[])
-     * setMyModules : fonction pour remplacer ce tableau
-     *
-     * Au début (chargement page), on met [] (vide).
-     */
     const [myModules, setMyModules] = useState<UserModule[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [err, setErr] = useState<string | null>(null);
 
-    /**
-     * useEffect(..., [])
-     * - le tableau [] signifie "exécuter une seule fois au chargement"
-     *
-     * On appelle le service listMyModules()
-     * puis on met le résultat dans le state via setMyModules.
-     *
-     * listMyModules() renvoie une Promise, donc on utilise .then(...)
-     */
     useEffect(() => {
-        listMyModules().then(setMyModules);
+        let mounted = true;
+
+        (async () => {
+            setLoading(true);
+            setErr(null);
+            try {
+                const data = await listMyModules();
+                if (!mounted) return;
+                setMyModules(data);
+            } catch (e) {
+                if (!mounted) return;
+                setErr(e instanceof Error ? e.message : "Impossible de charger les modules.");
+            } finally {
+                if (!mounted) return;
+                setLoading(false);
+            }
+        })();
+
+        return () => {
+            mounted = false;
+        };
     }, []);
 
-    /**
-     * JSX : rendu de la page.
-     */
     return (
         <section style={card}>
-            <h2 style={h2}>Mes modules</h2>
+            <div style={topRow}>
+                <div>
+                    <h2 style={{ ...h2, marginBottom: 4 }}>Mes modules</h2>
+                    <div style={muted}>Liste des modules liés à ton profil (mock pour le moment)</div>
+                </div>
+                <Link to="/" style={btnLink}>← Dashboard</Link>
+            </div>
 
-            {/**
-             * Affichage conditionnel :
-             * - si myModules est vide -> message "Aucun module"
-             * - sinon -> on affiche une grille de "tuiles" cliquables
-             */}
-            {myModules.length === 0 ? (
-                <div style={muted}>Aucun module (mock) pour le moment.</div>
+            {err && <div style={{ marginTop: 12, ...errorBox }}>{err}</div>}
+
+            {loading ? (
+                <div style={{ marginTop: 12, ...muted }}>Chargement…</div>
+            ) : myModules.length === 0 ? (
+                <div style={{ marginTop: 12, ...muted }}>Aucun module pour le moment.</div>
             ) : (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                    {/**
-                     * myModules.map(...) :
-                     * - map permet de transformer une liste en une liste d’éléments JSX.
-                     *
-                     * Chaque élément doit avoir une clé unique (key)
-                     * -> ici moduleNom (unique dans nos données)
-                     */}
+                <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                     {myModules.map((m) => (
-                        /**
-                         * Link :
-                         * - en cliquant, on va sur /modules/<moduleNom>
-                         *
-                         * encodeURIComponent :
-                         * - transforme les espaces / accents pour que ça soit valide dans l’URL
-                         *   ex: "Boucles JS" -> "Boucles%20JS"
-                         */
                         <Link
                             key={m.moduleNom}
                             to={`/modules/${encodeURIComponent(m.moduleNom)}`}
                             style={tile}
                         >
-                            {/* Nom du module */}
-                            <div style={{ fontWeight: 800 }}>{m.moduleNom}</div>
-
-                            {/* Données de la relation Travailler */}
+                            <div style={{ fontWeight: 900 }}>{m.moduleNom}</div>
                             <div style={muted}>Difficulté: {m.difficulte}</div>
                             <div style={muted}>Prochaine alerte: {m.prochaineAlerte ?? "—"}</div>
                         </Link>
@@ -108,43 +68,52 @@ export default function ModulesPage() {
     );
 }
 
-/* =======================
-   Styles (CSS en objets JS)
-   ======================= */
+/** ===== Styles ===== */
 
-/**
- * card : style du conteneur principal
- */
-const card: React.CSSProperties = {
+const card: CSSProperties = {
     border: "1px solid rgba(0,0,0,0.12)",
     borderRadius: 14,
     padding: 14,
-    background: "white"
+    background: "white",
 };
 
-/**
- * h2 : style du titre
- */
-const h2: React.CSSProperties = {
+const topRow: CSSProperties = {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+    alignItems: "center",
+};
+
+const h2: CSSProperties = {
     margin: "0 0 10px 0",
-    fontSize: 18
+    fontSize: 18,
 };
 
-/**
- * muted : texte "secondaire" (moins important visuellement)
- */
-const muted: React.CSSProperties = {
+const muted: CSSProperties = {
     opacity: 0.75,
-    fontSize: 13
+    fontSize: 13,
 };
 
-/**
- * tile : une "tuile" cliquable qui ressemble à une carte
- *
- * textDecoration: "none" :
- * - enlève le soulignement classique des liens
- */
-const tile: React.CSSProperties = {
+const errorBox: CSSProperties = {
+    border: "1px solid rgba(0,0,0,0.18)",
+    borderRadius: 12,
+    padding: 10,
+    background: "rgba(0,0,0,0.03)",
+    fontSize: 13,
+};
+
+const btnLink: CSSProperties = {
+    padding: "8px 10px",
+    borderRadius: 10,
+    border: "1px solid rgba(0,0,0,0.18)",
+    background: "white",
+    color: "#111",
+    cursor: "pointer",
+    textDecoration: "none",
+};
+
+const tile: CSSProperties = {
     border: "1px solid rgba(0,0,0,0.12)",
     borderRadius: 14,
     padding: 12,

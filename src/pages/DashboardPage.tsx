@@ -1,11 +1,14 @@
+// src/pages/DashboardPage.tsx
 import { useEffect, useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getMe } from "../services/user.service";
 import { logoutLocal } from "../services/auth.service";
+import { getLocalUserClass, type LocalUserClass } from "../services/classLocal.service";
 import type { User } from "../types";
 
 export default function DashboardPage() {
     const [user, setUser] = useState<User | null>(null);
+    const [localClass, setLocalClass] = useState<LocalUserClass | null>(null);
     const [err, setErr] = useState<string | null>(null);
 
     const navigate = useNavigate();
@@ -13,8 +16,12 @@ export default function DashboardPage() {
     useEffect(() => {
         async function load() {
             try {
-                const me = await getMe();
+                const me = await getMe(); // { mail, prenom, nom } selon ton mapping
                 setUser(me);
+
+                // ✅ classe stockée localement (tant que backend pas prêt)
+                const cls = getLocalUserClass(me.mail);
+                setLocalClass(cls);
             } catch {
                 setErr("Impossible de charger l’utilisateur (non connecté ?)");
             }
@@ -24,7 +31,7 @@ export default function DashboardPage() {
 
     function onLogout() {
         logoutLocal(); // supprime le token
-        navigate("/", { replace: true });
+        navigate("/login", { replace: true });
     }
 
     return (
@@ -33,9 +40,15 @@ export default function DashboardPage() {
             <div style={topRow}>
                 <h2 style={h2}>Dashboard</h2>
 
-                <button style={btn} onClick={onLogout}>
-                    Logout
-                </button>
+                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                    <Link to="/choose-class" style={btnLink}>
+                        Choisir ma classe
+                    </Link>
+
+                    <button style={btn} onClick={onLogout}>
+                        Logout
+                    </button>
+                </div>
             </div>
 
             {/* Utilisateur */}
@@ -47,6 +60,12 @@ export default function DashboardPage() {
                     <div style={muted}>{user.mail}</div>
                 </div>
             )}
+
+            {/* Classe (local) */}
+            <div style={{ marginBottom: 14, ...muted }}>
+                Classe :{" "}
+                <b>{localClass ? `${localClass.class_id} (${localClass.class_year})` : "Non définie"}</b>
+            </div>
 
             {err && <div style={errorBox}>{err}</div>}
 
@@ -84,6 +103,8 @@ const topRow: CSSProperties = {
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 12,
+    gap: 10,
+    flexWrap: "wrap",
 };
 
 const h2: CSSProperties = {
@@ -129,4 +150,14 @@ const btn: CSSProperties = {
     border: "1px solid rgba(0,0,0,0.18)",
     background: "white",
     cursor: "pointer",
+};
+
+const btnLink: CSSProperties = {
+    padding: "8px 12px",
+    borderRadius: 10,
+    border: "1px solid rgba(0,0,0,0.18)",
+    background: "white",
+    color: "#111",
+    cursor: "pointer",
+    textDecoration: "none",
 };

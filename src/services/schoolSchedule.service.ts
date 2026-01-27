@@ -4,102 +4,77 @@
  * Service responsable de l’horaire scolaire importé depuis un fichier .ics
  *
  * Objectif :
- * - Permettre à un élève d’importer son planning scolaire (.ics)
- * - Convertir ce fichier en événements exploitables par le frontend
- * - Sauvegarder ces événements localement (localStorage)
+ * - importer le texte .ics
+ * - parser → events
+ * - stocker en localStorage
  *
- * ⚠️ IMPORTANT :
- * - Ces données sont PERSONNELLES à l’utilisateur
- * - Elles ne viennent pas encore du backend
- * - Plus tard, ce service sera remplacé par des appels API (fetch/axios)
+ * ✅ Sécurité ajoutée :
+ * - refuse un fichier qui n’est pas un vrai ICS (pas de BEGIN:VCALENDAR)
+ * - ne crash pas : on throw une Error claire capturable par l’UI
  */
 
 import { fakeDelay } from "./api";
 import { mockUser } from "./mockDb";
 import { parseIcs, type IcsEvent } from "../lib/ics";
 
-/**
- * Génère la clé utilisée dans le localStorage du navigateur
- *
- * Pourquoi ?
- * - localStorage est un simple dictionnaire clé → valeur (string → string)
- * - On veut une clé UNIQUE par utilisateur
- *
- * Exemple de clé générée :
- *   cpnv_school_ics_eleve@cpnv.ch
- */
 function storageKey() {
     return `cpnv_school_ics_${mockUser.mail}`;
 }
 
-/**
- * Récupère les événements scolaires stockés localement
- *
- * Étapes :
- * 1) On attend un faux délai (simulation appel réseau)
- * 2) On lit dans le localStorage avec la clé utilisateur
- * 3) Si rien n’est stocké → tableau vide
- * 4) Si quelque chose existe → on tente de parser le JSON
- *
- * Retour :
- * - un tableau d’événements IcsEvent
- */
+/** Lecture des événements stockés */
 export async function getSchoolEvents(): Promise<IcsEvent[]> {
     await fakeDelay();
 
-    // Lecture brute (string) depuis le navigateur
     const raw = localStorage.getItem(storageKey());
-
-    // Aucun horaire importé
     if (!raw) return [];
 
     try {
-        // Conversion string → objet JS
-        return JSON.parse(raw) as IcsEvent[];
+        const parsed = JSON.parse(raw) as IcsEvent[];
+        // petite sécurité : s’assurer que c’est bien un tableau
+        return Array.isArray(parsed) ? parsed : [];
     } catch {
-        // Sécurité : si le JSON est corrompu
         return [];
     }
 }
 
 /**
- * Importe un fichier .ics (texte brut)
+ * Import texte .ics (lu depuis un <input type="file" />)
  *
- * icsText :
- * - contenu complet du fichier .ics (lu via <input type="file" />)
- *
- * Étapes :
- * 1) parseIcs transforme le texte .ics en objets IcsEvent
- * 2) On sauvegarde le résultat dans le localStorage
- * 3) On renvoie les événements pour mise à jour immédiate de l’UI
- *
- * Usage :
- * - PlanningPage (import horaire scolaire)
+ * ✅ Sécurité:
+ * - si texte vide ou pas un VCALENDAR -> Error
+ * - parseIcs() est lui-même “safe”
  */
 export async function importSchoolIcs(icsText: string): Promise<IcsEvent[]> {
     await fakeDelay();
 
-    // Parsing du format iCalendar vers notre format interne
-    const events = parseIcs(icsText);
+    const text = (icsText ?? "").trim();
+    if (!text) {
+        throw new Error("Fichier .ics vide.");
+    }
 
-    // Sauvegarde locale (persistant même après refresh)
+    // ✅ signature minimale d’un ICS
+    // (on tolère BOM + espaces)
+    const normalized = text.replace(/^\uFEFF/, "").trimStart();
+    if (!normalized.startsWith("BEGIN:VCALENDAR")) {
+        throw new Error("Ce fichier ne semble pas être un calendrier .ics valide (BEGIN:VCALENDAR manquant).");
+    }
+
+    const events = parseIcs(text);
+
+    // Si le fichier est un ICS mais ne contient aucun VEVENT exploitable
+    if (events.length === 0) {
+        // On sauvegarde quand même un tableau vide (optionnel),
+        // mais surtout on informe via Error (ou tu peux juste return []).
+        localStorage.setItem(storageKey(), JSON.stringify([]));
+        return [];
+    }
+
     localStorage.setItem(storageKey(), JSON.stringify(events));
-
     return events;
 }
 
-/**
- * Supprime complètement l’horaire scolaire de l’utilisateur
- *
- * Usage :
- * - Bouton "Effacer l’horaire" dans PlanningPage
- *
- * Effet :
- * - localStorage nettoyé
- * - plus aucun cours affiché
- */
+/** Supprime complètement l’horaire scolaire de l’utilisateur */
 export async function clearSchoolEvents(): Promise<void> {
     await fakeDelay();
-
     localStorage.removeItem(storageKey());
 }

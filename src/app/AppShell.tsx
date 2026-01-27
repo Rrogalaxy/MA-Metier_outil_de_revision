@@ -1,67 +1,68 @@
-/**
- * Import des hooks React.
- *
- * - useState : permet de stocker un état local dans un composant
- * - useEffect : permet d’exécuter du code lors du chargement du composant
- *
- * 👉 Ici, ils ne sont pas utilisés directement dans ce fichier,
- * mais ils sont souvent présents dans les composants React.
- */
+// src/app/AppShell.tsx
 import { useEffect, useState } from "react";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { getMeApi, getLocalClass } from "../services/user.service";
 
-/**
- * Import des composants de React Router.
- *
- * - Link : lien de navigation interne (équivalent <a>, sans recharger la page)
- * - NavLink : comme Link, mais permet de savoir si le lien est "actif"
- * - Outlet : zone où React Router affiche la page courante
- */
-import { Link, NavLink, Outlet } from "react-router-dom";
-
-/**
- * Fonction qui définit le style des liens du menu.
- *
- * 👉 Cette fonction reçoit un objet contenant isActive :
- * - isActive = true  → le lien correspond à la page affichée
- * - isActive = false → lien inactif
- *
- * TypeScript :
- * { isActive: boolean } signifie que isActive est un booléen.
- */
+// Style NavLink (actif / inactif)
 const navLinkStyle = ({ isActive }: { isActive: boolean }) => ({
     padding: "8px 10px",
     borderRadius: 10,
     textDecoration: "none",
     border: "1px solid rgba(0,0,0,0.12)",
     color: "#111",
-
-    // Si le lien est actif → fond gris clair
-    // Sinon → fond blanc
     background: isActive ? "rgba(0,0,0,0.08)" : "white",
 });
 
-/**
- * Composant principal AppShell.
- *
- * 👉 En React, un composant est une fonction qui retourne du JSX
- * 👉 JSX ressemble à du HTML, mais c’est en réalité du JavaScript
- *
- * AppShell représente :
- * - le layout général de l’application
- * - le header (titre + navigation)
- * - une zone centrale où les pages s’affichent
- */
 export default function AppShell() {
-    return (
-        /**
-         * <div> principal de l’application
-         *
-         * style = objet JavaScript (pas du CSS classique)
-         * fontFamily, padding, maxWidth, margin → styles inline
-         */
-        <div style={{ fontFamily: "system-ui", padding: 20, maxWidth: 1100, margin: "0 auto" }}>
+    const navigate = useNavigate();
+    const location = useLocation();
 
-            {/* HEADER : titre + menu de navigation */}
+    // petit état pour éviter de spammer la redirection pendant le chargement
+    const [classChecked, setClassChecked] = useState(false);
+
+    useEffect(() => {
+        (async () => {
+            // Pages où on ne force jamais le choix de classe
+            // (normalement AppShell n'est pas utilisé sur /login /register,
+            // mais ça sécurise si la config router change)
+            const path = location.pathname;
+            const allowList = ["/login", "/register", "/choose-class"];
+            if (allowList.includes(path)) {
+                setClassChecked(true);
+                return;
+            }
+
+            // Si pas de token, RequireAuth gère déjà. On ne fait rien ici.
+            const token = localStorage.getItem("auth_token");
+            if (!token) {
+                setClassChecked(true);
+                return;
+            }
+
+            try {
+                // On récupère l'email depuis l'API (auth:sanctum Bearer)
+                const me = await getMeApi();
+
+                // On vérifie la classe en localStorage
+                const cls = getLocalClass(me.email);
+
+                if (!cls) {
+                    // pas de classe → redirection vers la page
+                    navigate("/choose-class", { replace: true });
+                    return;
+                }
+            } catch {
+                // Si /api/user échoue, RequireAuth/login va le gérer côté UX.
+                // Ici on évite juste de bloquer l'app.
+            } finally {
+                setClassChecked(true);
+            }
+        })();
+    }, [location.pathname, navigate]);
+
+    return (
+        <div style={{ fontFamily: "system-ui", padding: 20, maxWidth: 1100, margin: "0 auto" }}>
+            {/* HEADER */}
             <header
                 style={{
                     display: "flex",
@@ -71,61 +72,42 @@ export default function AppShell() {
                     alignItems: "center",
                 }}
             >
-                {/*
-                  Link = lien interne React Router
-                  to="/" → page d’accueil (Dashboard)
-                */}
                 <Link to="/" style={{ textDecoration: "none", color: "#111" }}>
                     <h1 style={{ margin: 0, fontSize: 22 }}>Révisions</h1>
                 </Link>
 
-                {/*
-                  Menu de navigation principal
-                  NavLink permet de styliser automatiquement le lien actif
-                */}
                 <nav style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <NavLink
-                        to="/"
-                        end
-                        style={navLinkStyle}
-                    >
+                    <NavLink to="/" end style={navLinkStyle}>
                         Dashboard
                     </NavLink>
 
-                    <NavLink
-                        to="/modules"
-                        style={navLinkStyle}
-                    >
+                    <NavLink to="/modules" style={navLinkStyle}>
                         Modules
                     </NavLink>
 
-                    <NavLink
-                        to="/planning"
-                        style={navLinkStyle}
-                    >
+                    <NavLink to="/planning" style={navLinkStyle}>
                         Planning
                     </NavLink>
 
-                    <NavLink
-                        to="/stats"
-                        style={navLinkStyle}
-                    >
+                    <NavLink to="/stats" style={navLinkStyle}>
                         Stats
+                    </NavLink>
+
+                    {/* ✅ Pratique pour accéder rapidement */}
+                    <NavLink to="/choose-class" style={navLinkStyle}>
+                        Classe
                     </NavLink>
                 </nav>
             </header>
 
-            {/*
-              Zone principale de l’application.
-              <Outlet /> est remplacé dynamiquement par React Router
-              selon la route actuelle :
-              - /           → DashboardPage
-              - /modules    → ModulesPage
-              - /planning   → PlanningPage
-              - /stats      → StatsPage
-            */}
+            {/* MAIN */}
             <main style={{ marginTop: 16 }}>
-                <Outlet />
+                {/* Optionnel : si tu veux éviter un flash, tu peux afficher un mini “Chargement…” */}
+                {!classChecked ? (
+                    <div style={{ opacity: 0.75, fontSize: 13 }}>Vérification du profil…</div>
+                ) : (
+                    <Outlet />
+                )}
             </main>
         </div>
     );

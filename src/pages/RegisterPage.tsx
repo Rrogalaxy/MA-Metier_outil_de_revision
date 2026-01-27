@@ -1,7 +1,8 @@
 // src/pages/RegisterPage.tsx
-import { useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { register } from "../services/auth.service";
+import { listClasses, type StudentClass } from "../services/class.service";
 
 export default function RegisterPage() {
     const [email, setEmail] = useState("");
@@ -10,10 +11,51 @@ export default function RegisterPage() {
     const [password, setPassword] = useState("");
     const [passwordConfirmation, setPasswordConfirmation] = useState("");
 
+    // ✅ classes backend
+    const [classes, setClasses] = useState<StudentClass[]>([]);
+    const [classesLoading, setClassesLoading] = useState(false);
+    const [classesErr, setClassesErr] = useState<string | null>(null);
+
+    // ✅ sélection de classe
+    const [selectedClassKey, setSelectedClassKey] = useState<string>(""); // ex: "SI-CA1a|2026"
+
     const [loading, setLoading] = useState(false);
     const [err, setErr] = useState<string | null>(null);
 
     const navigate = useNavigate();
+
+    // Charge la liste des classes au montage
+    useEffect(() => {
+        (async () => {
+            setClassesLoading(true);
+            setClassesErr(null);
+            try {
+                const data = await listClasses();
+                setClasses(data);
+
+                // pré-sélection du 1er item si existe
+                if (data.length > 0) {
+                    const first = data[0];
+                    setSelectedClassKey(`${first.class_id}|${String(first.class_year)}`);
+                }
+            } catch (e) {
+                setClassesErr(
+                    e instanceof Error
+                        ? e.message
+                        : "Impossible de charger la liste des classes"
+                );
+            } finally {
+                setClassesLoading(false);
+            }
+        })();
+    }, []);
+
+    const selectedClass = useMemo(() => {
+        if (!selectedClassKey) return null;
+        const [class_id, class_year] = selectedClassKey.split("|");
+        if (!class_id || !class_year) return null;
+        return { class_id, class_year };
+    }, [selectedClassKey]);
 
     async function onSubmit(e: React.FormEvent) {
         e.preventDefault();
@@ -24,6 +66,12 @@ export default function RegisterPage() {
             return;
         }
 
+        // ✅ si vous exigez une classe, décommente :
+        // if (!selectedClass) {
+        //   setErr("Merci de sélectionner une classe.");
+        //   return;
+        // }
+
         setLoading(true);
         try {
             await register({
@@ -32,7 +80,14 @@ export default function RegisterPage() {
                 last_name: lastName.trim(),
                 password,
                 password_confirmation: passwordConfirmation,
-            });
+
+                // ✅ on prépare le futur : classe/année
+                // (si le backend ignore ces champs, il faut qu'il ne valide pas strictement)
+                ...(selectedClass
+                    ? { class_id: selectedClass.class_id, class_year: selectedClass.class_year }
+                    : {}),
+            } as any); // ← "as any" pour éviter de casser si ton type register() n'a pas encore class_id/year
+
             navigate("/", { replace: true });
         } catch (e) {
             setErr(e instanceof Error ? e.message : "Erreur lors de l’inscription");
@@ -58,12 +113,55 @@ export default function RegisterPage() {
 
                 <div style={field}>
                     <div style={label}>Email</div>
-                    <input style={input} value={email} onChange={(e) => setEmail(e.target.value)} />
+                    <input style={input} value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+                </div>
+
+                {/* ✅ Classe */}
+                <div style={field}>
+                    <div style={label}>Classe</div>
+
+                    {classesLoading ? (
+                        <div style={muted}>Chargement des classes…</div>
+                    ) : classesErr ? (
+                        <div style={errorBox}>
+                            <div style={{ fontWeight: 800, marginBottom: 4 }}>Classes indisponibles</div>
+                            <div style={{ ...muted, opacity: 1 }}>{classesErr}</div>
+                            <div style={{ marginTop: 6, ...muted }}>
+                                Tu peux quand même créer un compte (dev), ou réessayer plus tard.
+                            </div>
+                        </div>
+                    ) : (
+                        <select
+                            style={select}
+                            value={selectedClassKey}
+                            onChange={(e) => setSelectedClassKey(e.target.value)}
+                            disabled={classes.length === 0}
+                        >
+                            {classes.length === 0 ? (
+                                <option value="">Aucune classe disponible</option>
+                            ) : (
+                                classes.map((c) => {
+                                    const key = `${c.class_id}|${String(c.class_year)}`;
+                                    return (
+                                        <option key={key} value={key}>
+                                            {c.class_id} — {String(c.class_year)}
+                                        </option>
+                                    );
+                                })
+                            )}
+                        </select>
+                    )}
                 </div>
 
                 <div style={field}>
                     <div style={label}>Mot de passe</div>
-                    <input style={input} type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                    <input
+                        style={input}
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        autoComplete="new-password"
+                    />
                 </div>
 
                 <div style={field}>
@@ -73,6 +171,7 @@ export default function RegisterPage() {
                         type="password"
                         value={passwordConfirmation}
                         onChange={(e) => setPasswordConfirmation(e.target.value)}
+                        autoComplete="new-password"
                     />
                 </div>
 
@@ -106,6 +205,15 @@ const field: CSSProperties = { display: "flex", flexDirection: "column", gap: 6 
 const label: CSSProperties = { ...muted, fontSize: 12 };
 
 const input: CSSProperties = {
+    padding: "8px 10px",
+    borderRadius: 10,
+    border: "1px solid rgba(0,0,0,0.18)",
+    background: "white",
+    color: "#111",
+    outline: "none",
+};
+
+const select: CSSProperties = {
     padding: "8px 10px",
     borderRadius: 10,
     border: "1px solid rgba(0,0,0,0.18)",

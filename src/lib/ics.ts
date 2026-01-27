@@ -1,6 +1,17 @@
 /**
- * TypeScript : forme d’un événement extrait d’un fichier .ics
+ * lib/ics.ts
+ * ----------
+ * Parser iCalendar (.ics) minimal.
+ *
+ * ✅ Objectif MVP :
+ * - extraire VEVENT (DTSTART, DTEND, SUMMARY, LOCATION)
+ * - convertir les dates en ISO LOCAL (YYYY-MM-DDTHH:mm:ss)
+ *
+ * ✅ Sécurité ajoutée :
+ * - si ce n’est pas un VCALENDAR -> retourne []
+ * - si dates invalides -> ignore l’event plutôt que crash
  */
+
 export type IcsEvent = {
     summary: string;
     location?: string;
@@ -8,10 +19,7 @@ export type IcsEvent = {
     endISO: string;
 };
 
-/**
- * Déplie les lignes iCalendar (RFC 5545)
- * Une ligne commençant par espace/tab = continuation
- */
+/** Déplie les lignes iCalendar (RFC 5545) : lignes continuées commencent par espace/tab */
 function unfoldIcs(text: string) {
     return text.replace(/\r?\n[ \t]/g, "");
 }
@@ -21,75 +29,87 @@ function unfoldIcs(text: string) {
  *
  * Cas gérés :
  * - 20260108T071500Z        (UTC → local)
- * - 20260108T081500         (déjà local)
- * - 2026-01-08T08:15:00
+ * - 20260108T081500         (déjà "local brut")
+ * - 2026-01-08T08:15:00     (déjà ISO-like)
  * - 20260108                (all-day)
  */
-function toLocalISOFromIcs(dt: string): string {
-    // 1️⃣ All-day event (YYYYMMDD)
-    if (/^\d{8}$/.test(dt)) {
-        const y = dt.slice(0, 4);
-        const m = dt.slice(4, 6);
-        const d = dt.slice(6, 8);
+function toLocalISOFromIcs(dt: string): string | null {
+    const raw = (dt ?? "").trim();
+    if (!raw) return null;
+
+    // 1) All-day event: YYYYMMDD
+    if (/^\d{8}$/.test(raw)) {
+        const y = raw.slice(0, 4);
+        const m = raw.slice(4, 6);
+        const d = raw.slice(6, 8);
         return `${y}-${m}-${d}T00:00:00`;
     }
 
-    /**
-     * 2️⃣ Si la date finit par Z → UTC
-     * On DOIT convertir en heure locale
-     */
-    if (dt.endsWith("Z")) {
-        // Exemple : 20260108T071500Z → Date UTC
-        const isoUtc =
-            dt.slice(0, 4) + "-" +
-            dt.slice(4, 6) + "-" +
-            dt.slice(6, 8) + "T" +
-            dt.slice(9, 11) + ":" +
-            dt.slice(11, 13) + ":" +
-            (dt.length >= 15 ? dt.slice(13, 15) : "00") +
-            "Z";
+    // 2) ISO-like already (2026-01-08T08:15:00)
+    // On accepte "YYYY-MM-DDTHH:mm" ou avec seconds
+    const isoLike = raw.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(Z|[+\-]\d{2}:?\d{2})?$/);
+    if (isoLike) {
+        const [, y, mo, d, hh, mm, ssRaw] = isoLike;
+        const ss = ssRaw ?? "00";
+        return `${y}-${mo}-${d}T${hh}:${mm}:${ss}`;
+    }
 
-        const d = new Date(isoUtc);
+    // 3) Format ICS compact : YYYYMMDDTHHMMSS? + suffix éventuel (Z / +0100 / +01:00)
+    // On capture le coeur sans suffix
+    const compact = raw.replace(/(Z|[+\-]\d{2}:?\d{2})$/, "");
+    const m = compact.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})?$/);
+    if (!m) return null;
 
-        // Conversion en ISO local
+    const [, y, mo, d, hh, mm, ssRaw] = m;
+    const ss = ssRaw ?? "00";
+
+    // Si suffix Z (UTC), on convertit réellement en local
+    if (raw.endsWith("Z")) {
+        const isoUtc = `${y}-${mo}-${d}T${hh}:${mm}:${ss}Z`;
+        const date = new Date(isoUtc);
+        if (Number.isNaN(date.getTime())) return null;
+
         const pad = (n: number) => String(n).padStart(2, "0");
-
         return (
-            d.getFullYear() + "-" +
-            pad(d.getMonth() + 1) + "-" +
-            pad(d.getDate()) + "T" +
-            pad(d.getHours()) + ":" +
-            pad(d.getMinutes()) + ":" +
-            pad(d.getSeconds())
+            date.getFullYear() +
+            "-" +
+            pad(date.getMonth() + 1) +
+            "-" +
+            pad(date.getDate()) +
+            "T" +
+            pad(date.getHours()) +
+            ":" +
+            pad(date.getMinutes()) +
+            ":" +
+            pad(date.getSeconds())
         );
     }
 
-    /**
-     * 3️⃣ Cas sans Z → parsing simple
-     */
-    const m = dt.match(
-        /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})?$/
-    );
-
-    if (!m) return "1970-01-01T00:00:00";
-
-    const [, y, mo, d, hh, mm, ss] = m;
-    return `${y}-${mo}-${d}T${hh}:${mm}:${ss ?? "00"}`;
+    // Sans suffix → on considère que c’est “local”
+    return `${y}-${mo}-${d}T${hh}:${mm}:${ss}`;
 }
 
-/**
- * Récupère la valeur après le ":" dans une ligne ICS
- */
+/** Valeur après ":" (ex: SUMMARY:xxx) */
 function valueAfterColon(line: string): string {
     const idx = line.indexOf(":");
     return idx >= 0 ? line.slice(idx + 1) : "";
 }
 
 /**
- * Parse un fichier .ics en événements exploitables
+ * parseIcs() : transforme le texte d’un fichier .ics en IcsEvent[]
+ *
+ * ✅ Sécurité :
+ * - si pas BEGIN:VCALENDAR → []
+ * - ignore les events incomplets
  */
 export function parseIcs(text: string): IcsEvent[] {
-    const unfolded = unfoldIcs(text);
+    const src = (text ?? "").replace(/^\uFEFF/, ""); // retire BOM si présent
+    const unfolded = unfoldIcs(src);
+    const trimmed = unfolded.trimStart();
+
+    // ✅ garde-fou anti-fichier non ICS
+    if (!trimmed.startsWith("BEGIN:VCALENDAR")) return [];
+
     const lines = unfolded.split(/\r?\n/);
 
     const events: IcsEvent[] = [];
@@ -108,13 +128,19 @@ export function parseIcs(text: string): IcsEvent[] {
         }
 
         if (line === "END:VEVENT") {
-            if (dtStart && dtEnd) {
-                events.push({
-                    summary: summary?.trim() || "Cours",
-                    location: location?.trim() || undefined,
-                    startISO: toLocalISOFromIcs(dtStart),
-                    endISO: toLocalISOFromIcs(dtEnd),
-                });
+            if (inEvent && dtStart && dtEnd) {
+                const startISO = toLocalISOFromIcs(dtStart);
+                const endISO = toLocalISOFromIcs(dtEnd);
+
+                // ✅ ignore event si dates invalides
+                if (startISO && endISO) {
+                    events.push({
+                        summary: summary?.trim() || "Cours",
+                        location: location?.trim() || undefined,
+                        startISO,
+                        endISO,
+                    });
+                }
             }
             inEvent = false;
             continue;
@@ -128,7 +154,5 @@ export function parseIcs(text: string): IcsEvent[] {
         else if (line.startsWith("LOCATION")) location = valueAfterColon(line);
     }
 
-    return events.sort((a, b) =>
-        a.startISO.localeCompare(b.startISO)
-    );
+    return events.sort((a, b) => a.startISO.localeCompare(b.startISO));
 }
