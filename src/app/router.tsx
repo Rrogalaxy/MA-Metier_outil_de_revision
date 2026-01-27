@@ -13,6 +13,7 @@ import StatsPage from "../pages/StatsPage";
 import PlanningPage from "../pages/PlanningPage";
 import LoginPage from "../pages/LoginPage";
 import RegisterPage from "../pages/RegisterPage";
+import ChooseClassPage from "../pages/ChooseClassPage";
 
 export const router = createBrowserRouter([
     // Routes publiques (pas besoin d'être connecté)
@@ -21,7 +22,7 @@ export const router = createBrowserRouter([
 
     // Routes protégées
     {
-        element: <RequireAuth />, // ✅ garde-fou auth
+        element: <RequireAuth />,
         children: [
             {
                 path: "/",
@@ -33,6 +34,9 @@ export const router = createBrowserRouter([
                     { path: "quiz/:quizId", element: <QuizPage /> },
                     { path: "stats", element: <StatsPage /> },
                     { path: "planning", element: <PlanningPage /> },
+
+                    // ✅ AJOUT : choisir sa classe
+                    { path: "choose-class", element: <ChooseClassPage /> },
                 ],
             },
         ],

@@ -1,5 +1,5 @@
 // src/pages/LoginPage.tsx
-import { useMemo, useState, type CSSProperties } from "react";
+import React, { useMemo, useState, type CSSProperties } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { login } from "../services/auth.service";
 
@@ -13,10 +13,23 @@ export default function LoginPage() {
     const location = useLocation();
 
     const redirectTo = useMemo(() => {
-        // si RequireAuth a envoyé un "from", on y retourne après login
+        // RequireAuth envoie { from: "/path?x=1#hash" }
         const state = location.state as { from?: string } | null;
         return state?.from ?? "/";
     }, [location.state]);
+
+    const bypass = import.meta.env.VITE_DEV_BYPASS_AUTH === "true";
+
+    function humanizeLoginError(e: unknown): string {
+        // Ton client http.ts throw: "HTTP 401 Unauthorized - {...}"
+        const msg = e instanceof Error ? e.message : "Erreur de connexion";
+
+        // Cas fréquent : mauvais identifiants
+        if (msg.includes("HTTP 401")) return "Email ou mot de passe incorrect.";
+
+        // Si backend renvoie un JSON erreur lisible dans le message, on garde un fallback simple
+        return msg.length > 180 ? "Erreur de connexion (voir console)." : msg;
+    }
 
     async function onSubmit(e: React.FormEvent) {
         e.preventDefault();
@@ -27,10 +40,15 @@ export default function LoginPage() {
             await login(email.trim(), password);
             navigate(redirectTo, { replace: true });
         } catch (e) {
-            setErr(e instanceof Error ? e.message : "Erreur de connexion");
+            setErr(humanizeLoginError(e));
         } finally {
             setLoading(false);
         }
+    }
+
+    function onBypassDev() {
+        // Bypass = on veut juste accéder aux pages sans auth (RequireAuth laissera passer).
+        navigate(redirectTo, { replace: true });
     }
 
     return (
@@ -64,6 +82,13 @@ export default function LoginPage() {
                 <button style={btnPrimary} disabled={loading || password.trim().length === 0}>
                     {loading ? "Connexion…" : "Se connecter"}
                 </button>
+
+                {/* ✅ DEV seulement : bouton pour avancer sans backend auth */}
+                {bypass && (
+                    <button type="button" style={btnSecondary} onClick={onBypassDev}>
+                        Bypass DEV (accéder sans login)
+                    </button>
+                )}
             </form>
 
             <div style={{ marginTop: 12, ...muted }}>
@@ -72,6 +97,8 @@ export default function LoginPage() {
         </section>
     );
 }
+
+/* ===== Styles ===== */
 
 const card: CSSProperties = {
     border: "1px solid rgba(0,0,0,0.12)",
@@ -103,6 +130,15 @@ const btnPrimary: CSSProperties = {
     border: "1px solid black",
     background: "black",
     color: "white",
+    cursor: "pointer",
+};
+
+const btnSecondary: CSSProperties = {
+    padding: "8px 10px",
+    borderRadius: 10,
+    border: "1px solid rgba(0,0,0,0.18)",
+    background: "white",
+    color: "#111",
     cursor: "pointer",
 };
 

@@ -1,8 +1,16 @@
 // src/pages/PlanningPage.tsx
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
-import { addMyActivity, deleteMyActivity, listMyActivities } from "../services/planning.service";
-import { clearSchoolEvents, getSchoolEvents, importSchoolIcs } from "../services/schoolSchedule.service";
+import {
+    addMyActivity,
+    deleteMyActivity,
+    listMyActivities,
+} from "../services/planning.service";
+import {
+    clearSchoolEvents,
+    getSchoolEvents,
+    importSchoolIcs,
+} from "../services/schoolSchedule.service";
 import type { Activity } from "../types";
 import type { IcsEvent } from "../lib/ics";
 
@@ -138,8 +146,14 @@ function generateFreeSlotsForDay(params: {
     const busyOfDay = busy
         .filter((b) => b.startISO.slice(0, 10) === dayISO)
         .map((b) => ({
-            start: Math.max(minutesSinceMidnight(b.startISO), workingHours.startHour * 60),
-            end: Math.min(minutesSinceMidnight(b.endISO), workingHours.endHour * 60),
+            start: Math.max(
+                minutesSinceMidnight(b.startISO),
+                workingHours.startHour * 60
+            ),
+            end: Math.min(
+                minutesSinceMidnight(b.endISO),
+                workingHours.endHour * 60
+            ),
         }))
         .filter((b) => b.end > b.start)
         .sort((a, b) => a.start - b.start);
@@ -206,13 +220,18 @@ export default function PlanningPage() {
     });
 
     // ✅ semaine affichée (lundi)
-    const [weekStartISO, setWeekStartISO] = useState(() => startOfWeekMonday(todayISO()));
+    const [weekStartISO, setWeekStartISO] = useState(() =>
+        startOfWeekMonday(todayISO())
+    );
 
     /**
      * ✅ IMPORTANT : ordre des colonnes = LUNDI → DIMANCHE
      * C'est CE tableau qui contrôle l'ordre d'affichage des jours.
      */
-    const days = useMemo(() => [0, 1, 2, 3, 4, 5, 6].map((i) => addDaysISO(weekStartISO, i)), [weekStartISO]);
+    const days = useMemo(
+        () => [0, 1, 2, 3, 4, 5, 6].map((i) => addDaysISO(weekStartISO, i)),
+        [weekStartISO]
+    );
 
     async function reloadActivities() {
         setErr(null);
@@ -298,8 +317,12 @@ export default function PlanningPage() {
                 id: `priv-${a.numeroActivites}`,
                 activityId: a.numeroActivites,
                 dayISO: d,
-                startMin: Number(a.heureDebut.slice(0, 2)) * 60 + Number(a.heureDebut.slice(3, 5)),
-                endMin: Number(a.heureFin.slice(0, 2)) * 60 + Number(a.heureFin.slice(3, 5)),
+                startMin:
+                    Number(a.heureDebut.slice(0, 2)) * 60 +
+                    Number(a.heureDebut.slice(3, 5)),
+                endMin:
+                    Number(a.heureFin.slice(0, 2)) * 60 +
+                    Number(a.heureFin.slice(3, 5)),
                 title: a.nomActivite,
                 subtitle: "Privé",
                 kind: "private",
@@ -319,19 +342,22 @@ export default function PlanningPage() {
         return out;
     }, [days, freeByDay, schoolEvents, items]);
 
-    const canSubmit = useMemo(() => {
-        if (form.nomActivite.trim().length < 2) return false;
-        if (!form.date) return false;
-        if (!isValidTime(form.heureDebut) || !isValidTime(form.heureFin)) return false;
-        return form.heureDebut < form.heureFin;
+    // ✅ message de validation détaillé (plutôt qu'un simple bool)
+    const formError = useMemo(() => {
+        if (form.nomActivite.trim().length < 2) return "Nom trop court (min 2 caractères).";
+        if (!form.date) return "Date manquante.";
+        if (!isValidTime(form.heureDebut) || !isValidTime(form.heureFin)) return "Heure invalide.";
+        if (form.heureFin <= form.heureDebut) return "L’heure de fin doit être après l’heure de début.";
+        return null;
     }, [form]);
 
+    const canSubmit = useMemo(() => formError === null, [formError]);
+
     async function onAdd() {
-        // ✅ force l'affichage des erreurs de validation
         setFormTouched(true);
 
-        if (!canSubmit) {
-            setErr("Impossible d’ajouter l’activité : vérifie les champs (fin après début).");
+        if (formError) {
+            setErr(formError);
             return;
         }
 
@@ -370,7 +396,9 @@ export default function PlanningPage() {
             <div style={topRow}>
                 <div>
                     <h2 style={{ ...h2, marginBottom: 4 }}>Planning</h2>
-                    <div style={muted}>Vue semaine (Lun → Dim) • cours (.ics) + activités privées + créneaux libres</div>
+                    <div style={muted}>
+                        Vue semaine (Lun → Dim) • cours (.ics) + activités privées + créneaux libres
+                    </div>
                 </div>
                 <Link to="/dashboard" style={btnLink}>
                     ← Dashboard
@@ -379,37 +407,68 @@ export default function PlanningPage() {
 
             {/* Barre semaine */}
             <div style={weekBar}>
-                <button style={btn} onClick={() => setWeekStartISO(addDaysISO(weekStartISO, -7))}>
+                <button
+                    style={btn}
+                    onClick={() => setWeekStartISO(addDaysISO(weekStartISO, -7))}
+                >
                     ←
                 </button>
 
                 <div style={{ fontWeight: 900 }}>
                     Semaine du{" "}
-                    <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>{weekStartISO}</span>
+                    <span
+                        style={{
+                            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                        }}
+                    >
+                        {weekStartISO}
+                    </span>
                 </div>
 
-                <button style={btn} onClick={() => setWeekStartISO(addDaysISO(weekStartISO, 7))}>
+                <button
+                    style={btn}
+                    onClick={() => setWeekStartISO(addDaysISO(weekStartISO, 7))}
+                >
                     →
                 </button>
 
-                <button style={btn} onClick={() => setWeekStartISO(startOfWeekMonday(todayISO()))}>
+                <button
+                    style={btn}
+                    onClick={() => setWeekStartISO(startOfWeekMonday(todayISO()))}
+                >
                     Aujourd’hui
                 </button>
 
-                <input style={input} type="date" value={weekStartISO} onChange={(e) => setWeekStartISO(startOfWeekMonday(e.target.value))} />
+                <input
+                    style={input}
+                    type="date"
+                    value={weekStartISO}
+                    onChange={(e) => setWeekStartISO(startOfWeekMonday(e.target.value))}
+                />
             </div>
 
             {/* Calendrier */}
             <div style={{ marginTop: 12 }}>
                 <h3 style={h3}>Calendrier (semaine)</h3>
-                <WeekCalendar days={days} blocksByDay={blocksByDay} onDeleteActivity={onDelete} />
+                <WeekCalendar
+                    days={days}
+                    blocksByDay={blocksByDay}
+                    onDeleteActivity={onDelete}
+                />
             </div>
 
             {/* Import .ics */}
             <div style={{ marginTop: 18 }}>
                 <h3 style={h3}>Horaire scolaire (.ics)</h3>
 
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <div
+                    style={{
+                        display: "flex",
+                        gap: 10,
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                    }}
+                >
                     <input
                         type="file"
                         accept=".ics,text/calendar"
@@ -420,12 +479,17 @@ export default function PlanningPage() {
                             const file = e.target.files?.[0];
                             if (!file) return;
 
-                            // ✅ Filtrage strict : extension + type (avec tolérance Windows)
+                            // ✅ Bloque les fichiers non-.ics (évite crash)
                             const nameOk = file.name.toLowerCase().endsWith(".ics");
-                            const typeOk = file.type === "text/calendar" || file.type === "application/octet-stream" || file.type === "";
+                            const typeOk =
+                                file.type === "text/calendar" ||
+                                file.type === "application/octet-stream" ||
+                                file.type === "";
 
                             if (!nameOk || !typeOk) {
-                                setIcsErr("Fichier invalide. Merci de sélectionner un fichier .ics (calendrier).");
+                                setIcsErr(
+                                    "Fichier invalide. Merci de sélectionner un fichier .ics (calendrier)."
+                                );
                                 e.currentTarget.value = "";
                                 return;
                             }
@@ -435,13 +499,18 @@ export default function PlanningPage() {
                                 const ev = await importSchoolIcs(text);
 
                                 if (!ev || ev.length === 0) {
-                                    setIcsErr("Le fichier .ics a été importé, mais aucun événement n’a été détecté.");
+                                    setIcsErr(
+                                        "Le fichier .ics a été importé, mais aucun événement n’a été détecté."
+                                    );
+                                    setSchoolEvents([]);
                                 } else {
                                     setSchoolEvents(ev);
                                     setIcsInfo(`Import réussi : ${ev.length} cours détectés.`);
                                 }
                             } catch {
-                                setIcsErr("Impossible d’importer ce fichier .ics (format non reconnu ou corrompu).");
+                                setIcsErr(
+                                    "Impossible d’importer ce fichier .ics (format non reconnu ou corrompu)."
+                                );
                             } finally {
                                 e.currentTarget.value = "";
                             }
@@ -461,8 +530,8 @@ export default function PlanningPage() {
                     </button>
 
                     <span style={muted}>
-            Cours importés : <b>{schoolEvents.length}</b>
-          </span>
+                        Cours importés : <b>{schoolEvents.length}</b>
+                    </span>
                 </div>
 
                 {/* ✅ Messages import */}
@@ -471,14 +540,30 @@ export default function PlanningPage() {
 
                 {/* Petit aperçu (debug) */}
                 {schoolEvents.length > 0 && (
-                    <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div
+                        style={{
+                            marginTop: 10,
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 6,
+                        }}
+                    >
                         {schoolEvents.slice(0, 5).map((c, i) => (
                             <div key={i} style={miniRow}>
-                                <div style={{ fontWeight: 900, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                <div
+                                    style={{
+                                        fontWeight: 900,
+                                        maxWidth: 240,
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
+                                    }}
+                                >
                                     {c.summary}
                                 </div>
                                 <div style={muted}>
-                                    {c.startISO.slice(0, 10)} • {timeHHMM(c.startISO)} → {timeHHMM(c.endISO)}
+                                    {c.startISO.slice(0, 10)} • {timeHHMM(c.startISO)} →{" "}
+                                    {timeHHMM(c.endISO)}
                                 </div>
                             </div>
                         ))}
@@ -544,17 +629,19 @@ export default function PlanningPage() {
                     </div>
 
                     <div style={{ display: "flex", alignItems: "flex-end" }}>
-                        <button style={btnPrimary} disabled={!canSubmit || saving} onClick={() => void onAdd()}>
+                        <button
+                            style={btnPrimary}
+                            disabled={!canSubmit || saving}
+                            onClick={() => void onAdd()}
+                        >
                             {saving ? "Ajout…" : "Ajouter"}
                         </button>
                     </div>
                 </div>
 
-                {/* ✅ Message explicite si invalide */}
-                {formTouched && !canSubmit && (
-                    <div style={{ marginTop: 10, ...errorBox }}>
-                        Vérifie les champs : nom ≥ 2 caractères et l’heure de fin doit être après l’heure de début.
-                    </div>
+                {/* ✅ Message explicite de validation */}
+                {formTouched && formError && (
+                    <div style={{ marginTop: 10, ...errorBox }}>{formError}</div>
                 )}
 
                 {err && <div style={{ marginTop: 10, ...errorBox }}>{err}</div>}
@@ -568,7 +655,9 @@ export default function PlanningPage() {
                     <div key={d} style={dayListCard}>
                         <div style={{ fontWeight: 900, marginBottom: 6 }}>{d}</div>
                         {(freeByDay[d]?.length ?? 0) === 0 ? (
-                            <div style={muted}>Aucun créneau ≥ 20 min entre 08:00 et 18:00.</div>
+                            <div style={muted}>
+                                Aucun créneau ≥ 20 min entre 08:00 et 18:00.
+                            </div>
                         ) : (
                             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                                 {freeByDay[d].map((s, i) => (
@@ -608,7 +697,15 @@ function WeekCalendar(props: {
     function dayLabel(dISO: string) {
         const dt = new Date(`${dISO}T00:00:00`);
         const day = dt.getDay(); // 0=Dim,1=Lun,...6=Sam
-        const names: Record<number, string> = { 1: "Lun", 2: "Mar", 3: "Mer", 4: "Jeu", 5: "Ven", 6: "Sam", 0: "Dim" };
+        const names: Record<number, string> = {
+            1: "Lun",
+            2: "Mar",
+            3: "Mer",
+            4: "Jeu",
+            5: "Ven",
+            6: "Sam",
+            0: "Dim",
+        };
         return `${names[day]} ${dISO.slice(8, 10)}`;
     }
 
@@ -662,13 +759,23 @@ function WeekCalendar(props: {
                             const height = ((end - start) / 60) * pxPerHour;
 
                             if (b.kind === "free") {
-                                return <div key={b.id} style={{ ...freeBlock, top, height }} title={`Libre ${minsToHHMM(start)} → ${minsToHHMM(end)}`} />;
+                                return (
+                                    <div
+                                        key={b.id}
+                                        style={{ ...freeBlock, top, height }}
+                                        title={`Libre ${minsToHHMM(start)} → ${minsToHHMM(end)}`}
+                                    />
+                                );
                             }
 
                             const style = b.kind === "school" ? schoolBlock : privateBlock;
 
                             return (
-                                <div key={b.id} style={{ ...style, top, height }} title={`${b.title} ${minsToHHMM(start)} → ${minsToHHMM(end)}`}>
+                                <div
+                                    key={b.id}
+                                    style={{ ...style, top, height }}
+                                    title={`${b.title} ${minsToHHMM(start)} → ${minsToHHMM(end)}`}
+                                >
                                     <div style={blockTitle}>{b.title}</div>
                                     <div style={blockMeta}>
                                         {minsToHHMM(start)} → {minsToHHMM(end)}
@@ -676,7 +783,11 @@ function WeekCalendar(props: {
                                     {b.subtitle && <div style={blockSub}>{b.subtitle}</div>}
 
                                     {b.kind === "private" && typeof b.activityId === "number" && (
-                                        <button style={miniDelete} onClick={() => onDeleteActivity(b.activityId!)} title="Supprimer">
+                                        <button
+                                            style={miniDelete}
+                                            onClick={() => onDeleteActivity(b.activityId!)}
+                                            title="Supprimer"
+                                        >
                                             ✕
                                         </button>
                                     )}
