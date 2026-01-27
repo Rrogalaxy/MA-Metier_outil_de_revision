@@ -1,74 +1,52 @@
 // src/services/auth.service.ts
 import { api, setToken } from "./http";
+import { setMockUser } from "./mockSession";
 
 /**
- * Réponse standard attendue du backend Laravel
- * (login / register)
+ * Token fake pour mode démo (quand backend KO)
  */
-type AuthResponse = {
-    token: string;
-    type: string; // ex: "Bearer"
-};
+function setFakeAuth(email: string, first_name: string, last_name: string) {
+    setToken("demo-token");
+    setMockUser({ email, first_name, last_name });
+}
 
-/**
- * Connexion utilisateur
- * POST /api/login
- */
-export async function login(email: string, password: string): Promise<AuthResponse> {
+export async function login(email: string, password: string) {
     try {
-        const res = await api.post<AuthResponse>("/api/login", {
-            email,
-            password,
-        });
-
+        // Backend normal
+        const res = await api.post<{ token: string; type: string }>("/api/login", { email, password });
         setToken(res.token);
         return res;
-    } catch (e) {
-        throw normalizeAuthError(e);
+    } catch {
+        // Fallback démo
+        setFakeAuth(email.trim().toLowerCase(), "Démo", "User");
+        return { token: "demo-token", type: "demo" };
     }
 }
 
-/**
- * Inscription utilisateur
- * POST /api/register
- */
 export async function register(payload: {
     email: string;
     password: string;
     password_confirmation: string;
     first_name: string;
     last_name: string;
-}): Promise<AuthResponse> {
+}) {
     try {
-        const res = await api.post<AuthResponse>("/api/register", payload);
-
+        const res = await api.post<{ token: string; type: string }>("/api/register", payload);
         setToken(res.token);
         return res;
-    } catch (e) {
-        throw normalizeAuthError(e);
+    } catch {
+        // Fallback démo
+        setFakeAuth(
+            payload.email.trim().toLowerCase(),
+            payload.first_name.trim() || "Démo",
+            payload.last_name.trim() || "User"
+        );
+        return { token: "demo-token", type: "demo" };
     }
 }
 
-/**
- * Déconnexion locale (frontend only)
- */
 export function logoutLocal() {
     setToken(null);
-}
-
-/* =====================================================
-   Utils
-   ===================================================== */
-
-/**
- * Normalise les erreurs Laravel pour l’UI
- */
-function normalizeAuthError(error: unknown): Error {
-    if (error instanceof Error) {
-        // Laravel renvoie souvent un JSON détaillé
-        // via ton http.ts → Error("HTTP xxx - {...}")
-        return error;
-    }
-
-    return new Error("Erreur d’authentification");
+    // On supprime aussi l’utilisateur mock
+    localStorage.removeItem("cpnv_mock_user");
 }

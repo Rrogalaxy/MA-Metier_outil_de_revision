@@ -1,10 +1,8 @@
 // src/services/user.service.ts
-import type { User } from "../types";
 import { api } from "./http";
+import { getLocalUserClass, setLocalUserClass } from "./classLocal.service";
+import { getMockUser } from "./mockSession";
 
-/**
- * Réponse backend actuelle (GET /api/user)
- */
 export type ApiUser = {
     email: string;
     first_name: string;
@@ -13,51 +11,67 @@ export type ApiUser = {
     class_year?: string | number | null;
 };
 
-/**
- * Stockage local de la classe (temporaire, en attendant endpoint backend).
- * Clé unique par utilisateur pour éviter mélanges.
- */
-function classStorageKey(email: string) {
-    return `cpnv_user_class_${email}`;
-}
-
-export function getLocalClass(email: string): { class_id: string; class_year: string | number } | null {
-    const raw = localStorage.getItem(classStorageKey(email));
-    if (!raw) return null;
-    try {
-        return JSON.parse(raw) as { class_id: string; class_year: string | number };
-    } catch {
-        return null;
-    }
-}
-
-export function setLocalClass(email: string, payload: { class_id: string; class_year: string | number }) {
-    localStorage.setItem(classStorageKey(email), JSON.stringify(payload));
-}
-
-/** Retourne la réponse API brute */
 export async function getMeApi(): Promise<ApiUser> {
     return api.get<ApiUser>("/api/user");
 }
 
-/** Retourne le type frontend User (utilisé dans DashboardPage) */
-export async function getMe(): Promise<User> {
-    const u = await getMeApi();
-    return {
-        mail: u.email,
-        prenom: u.first_name,
-        nom: u.last_name,
-    };
+/**
+ * ✅ Smart: tente backend, sinon renvoie un user mock
+ * - si l'utilisateur mock existe (login/register fallback), on le renvoie
+ * - sinon on renvoie un user "démo" par défaut
+ * - on applique aussi la classe locale si elle existe
+ */
+export async function getMeSmart(): Promise<ApiUser> {
+    try {
+        // backend
+        const me = await getMeApi();
+        return me;
+    } catch {
+        // fallback mockSession
+        const u = getMockUser();
+
+        const base: ApiUser = u
+            ? { ...u, class_id: null, class_year: null }
+            : {
+                email: "eleve@cpnv.ch",
+                first_name: "Élève",
+                last_name: "Démo",
+                class_id: null,
+                class_year: null,
+            };
+
+        // ✅ si une classe est stockée localement, on l’injecte dans le user mock
+        const local = getLocalUserClass(base.email);
+        if (local) {
+            return {
+                ...base,
+                class_id: local.class_id,
+                class_year: local.class_year,
+            };
+        }
+
+        return base;
+    }
 }
 
 /**
- * ✅ TEMPORAIRE : on “sauve la classe” en localStorage
- * (car /api/user/class n’existe pas encore côté backend)
+ * ✅ Fallback localStorage : classe de l’utilisateur
+ */
+export function getLocalClass(email: string) {
+    return getLocalUserClass(email);
+}
+
+/**
+ * ✅ Smart update:
+ * - tente PATCH backend
+ * - sinon stocke en localStorage (démo)
  */
 export async function updateMyClass(payload: { class_id: string; class_year: string | number }) {
-    // On récupère l'utilisateur pour avoir son email (clé)
-    const me = await getMeApi();
-    setLocalClass(me.email, payload);
-
-    return { message: "Classe enregistrée localement (mode dev)" };
+    try {
+        return await api.patch<{ message: string }>("/api/user/class", payload);
+    } catch {
+        const me = await getMeSmart(); // renvoie un user cohérent même si API down
+        setLocalUserClass(me.email, payload);
+        return { message: "Classe enregistrée (local mock)" };
+    }
 }
