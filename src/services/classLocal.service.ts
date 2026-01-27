@@ -1,36 +1,28 @@
 // src/services/classLocal.service.ts
 
-/**
- * Stockage local de la classe de l'utilisateur.
- * Objectif : ne pas dépendre du backend tant que l’endpoint user/class n’existe pas.
- *
- * Clé = cpnv_user_class_<email>
- * Valeur = { class_id, class_year }
- */
-
-export type LocalUserClass = {
+export type LocalStudentClass = {
     class_id: string;
     class_year: string | number;
 };
 
-function storageKey(email: string) {
-    return `cpnv_user_class_${email}`;
+function key(email: string) {
+    return `cpnv_local_class_${email.toLowerCase()}`;
 }
 
-export function setLocalUserClass(email: string, cls: LocalUserClass) {
-    localStorage.setItem(storageKey(email), JSON.stringify(cls));
-}
-
-export function getLocalUserClass(email: string): LocalUserClass | null {
-    const raw = localStorage.getItem(storageKey(email));
-    if (!raw) return null;
+export function getLocalUserClass(email: string): LocalStudentClass | null {
     try {
-        return JSON.parse(raw) as LocalUserClass;
+        const raw = localStorage.getItem(key(email));
+        if (!raw) return null;
+        return JSON.parse(raw) as LocalStudentClass;
     } catch {
         return null;
     }
 }
 
+export function setLocalUserClass(email: string, cls: LocalStudentClass) {
+    localStorage.setItem(key(email), JSON.stringify(cls));
+}
+
 export function clearLocalUserClass(email: string) {
-    localStorage.removeItem(storageKey(email));
+    localStorage.removeItem(key(email));
 }

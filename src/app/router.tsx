@@ -16,7 +16,7 @@ import RegisterPage from "../pages/RegisterPage";
 import ChooseClassPage from "../pages/ChooseClassPage";
 
 export const router = createBrowserRouter([
-    // Routes publiques (pas besoin d'être connecté)
+    // Routes publiques
     { path: "/login", element: <LoginPage /> },
     { path: "/register", element: <RegisterPage /> },
 
@@ -29,14 +29,15 @@ export const router = createBrowserRouter([
                 element: <AppShell />,
                 children: [
                     { index: true, element: <DashboardPage /> },
+
+                    // ✅ Ajout : page choisir classe
+                    { path: "choose-class", element: <ChooseClassPage /> },
+
                     { path: "modules", element: <ModulesPage /> },
                     { path: "modules/:moduleNom", element: <ModuleDetailPage /> },
                     { path: "quiz/:quizId", element: <QuizPage /> },
                     { path: "stats", element: <StatsPage /> },
                     { path: "planning", element: <PlanningPage /> },
-
-                    // ✅ AJOUT : choisir sa classe
-                    { path: "choose-class", element: <ChooseClassPage /> },
                 ],
             },
         ],

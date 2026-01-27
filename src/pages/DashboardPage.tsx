@@ -1,42 +1,39 @@
 // src/pages/DashboardPage.tsx
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { getMe } from "../services/user.service";
 import { logoutLocal } from "../services/auth.service";
-import { getLocalUserClass, type LocalUserClass } from "../services/classLocal.service";
-import type { User } from "../types";
+import { getMeSmart, type ApiUser } from "../services/user.service";
+import { getLocalUserClass } from "../services/classLocal.service";
 
 export default function DashboardPage() {
-    const [user, setUser] = useState<User | null>(null);
-    const [localClass, setLocalClass] = useState<LocalUserClass | null>(null);
+    const [user, setUser] = useState<ApiUser | null>(null);
     const [err, setErr] = useState<string | null>(null);
 
     const navigate = useNavigate();
 
     useEffect(() => {
-        async function load() {
+        (async () => {
             try {
-                const me = await getMe(); // { mail, prenom, nom } selon ton mapping
+                const me = await getMeSmart();
                 setUser(me);
-
-                // ✅ classe stockée localement (tant que backend pas prêt)
-                const cls = getLocalUserClass(me.mail);
-                setLocalClass(cls);
             } catch {
-                setErr("Impossible de charger l’utilisateur (non connecté ?)");
+                setErr("Impossible de charger l’utilisateur");
             }
-        }
-        void load();
+        })();
     }, []);
 
+    const localClass = useMemo(() => {
+        if (!user?.email) return null;
+        return getLocalUserClass(user.email);
+    }, [user?.email]);
+
     function onLogout() {
-        logoutLocal(); // supprime le token
+        logoutLocal();
         navigate("/login", { replace: true });
     }
 
     return (
         <section style={card}>
-            {/* Header */}
             <div style={topRow}>
                 <h2 style={h2}>Dashboard</h2>
 
@@ -51,45 +48,32 @@ export default function DashboardPage() {
                 </div>
             </div>
 
-            {/* Utilisateur */}
             {user && (
                 <div style={{ marginBottom: 16 }}>
                     <div style={{ fontWeight: 900 }}>
-                        {user.prenom} {user.nom}
+                        {user.first_name} {user.last_name}
                     </div>
-                    <div style={muted}>{user.mail}</div>
+                    <div style={muted}>{user.email}</div>
                 </div>
             )}
 
-            {/* Classe (local) */}
             <div style={{ marginBottom: 14, ...muted }}>
                 Classe :{" "}
-                <b>{localClass ? `${localClass.class_id} (${localClass.class_year})` : "Non définie"}</b>
+                <b>
+                    {localClass ? `${localClass.class_id} (${localClass.class_year})` : "Non définie"}
+                </b>
             </div>
 
             {err && <div style={errorBox}>{err}</div>}
 
-            {/* Navigation */}
             <div style={grid}>
-                <Link to="/modules" style={cardLink}>
-                    📚 Modules
-                </Link>
-
-                <Link to="/planning" style={cardLink}>
-                    🗓️ Planning
-                </Link>
-
-                <Link to="/stats" style={cardLink}>
-                    📊 Statistiques
-                </Link>
+                <Link to="/modules" style={cardLink}>📚 Modules</Link>
+                <Link to="/planning" style={cardLink}>🗓️ Planning</Link>
+                <Link to="/stats" style={cardLink}>📊 Statistiques</Link>
             </div>
         </section>
     );
 }
-
-/* =======================
-   Styles
-   ======================= */
 
 const card: CSSProperties = {
     border: "1px solid rgba(0,0,0,0.12)",
@@ -107,15 +91,8 @@ const topRow: CSSProperties = {
     flexWrap: "wrap",
 };
 
-const h2: CSSProperties = {
-    margin: 0,
-    fontSize: 18,
-};
-
-const muted: CSSProperties = {
-    opacity: 0.75,
-    fontSize: 13,
-};
+const h2: CSSProperties = { margin: 0, fontSize: 18 };
+const muted: CSSProperties = { opacity: 0.75, fontSize: 13 };
 
 const errorBox: CSSProperties = {
     marginTop: 10,
