@@ -1,4 +1,62 @@
-Installer et démarrer le serveur Vite local
+🧩 **Fonctionnalités:**
+
+🏠 **Dashboard**
+
+* Infos utilisateur
+* Classe sélectionnée
+* Accès rapide aux modules, planning, stats
+
+📘 **Modules**
+
+* Liste des modules liés à l’utilisateur
+* Progression par module (relation Travailler)
+* Difficulté + rappels automatiques
+
+🧪 **Quiz & Flashcards**
+
+* Quiz : réponse libre + correction
+* Score calculé
+* Résultats enregistrés (relation Obtenir)
+
+📊 **Statistiques**
+
+* Historique des scores
+* Moyenne
+* Meilleur score
+* Données issues du backend ou du mock
+
+🗓️ **Planning**
+
+* Activités privées (ajout / suppression)
+* Import d’horaires scolaires via fichier .ics
+* Vue semaine (Lundi → Dimanche)
+* Calcul automatique des créneaux libres
+* Stockage local sécurisé par utilisateur
+
+🧪 **Mode Mock (sans backend)**
+
+Le projet fonctionne 100 % sans backend grâce à :
+
+* mockDb.ts : données simulées
+* fakeDelay() : délai réseau réaliste
+* cache.ts : cache mémoire avec TTL
+
+Services smart :
+* backend → mock automatique en cas d’erreur
+Aucune modification nécessaire pour passer au backend réel plus tard.
+
+✅ Séparation claire :
+
+* Pages = UI
+* Services = logique métier
+* Types = modèle de données
+
+
+------------------------------------------------
+
+
+
+Installer et démarrer le serveur Vite local:
 Installer NodeJs :
 https://nodejs.org/en/download
 Télécharger le projet depuit le github dans la branch develop :
