@@ -56,7 +56,8 @@ Aucune modification nécessaire pour passer au backend réel plus tard.
 
 
 
-Installer et démarrer le serveur Vite local:
+**Installer et démarrer le serveur Vite local:**
+
 Installer NodeJs :
 https://nodejs.org/en/download
 Télécharger le projet depuit le github dans la branch develop :
