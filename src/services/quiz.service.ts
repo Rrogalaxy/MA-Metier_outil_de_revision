@@ -1,6 +1,7 @@
 // src/services/quiz.service.ts
 import { api } from "./http";
 import type { Question, Quiz, QuizResult } from "../types";
+import { mockQuestions, mockQuizResults, mockQuizzes, mockUser } from "./mockDb";
 
 type ApiQuiz = {
     id: number;
@@ -20,58 +21,130 @@ type ApiQuestion = {
     difficulte?: number;
 };
 
+type ApiQuizResult = {
+    quizId: number;
+    score: number;
+    datePassage: string;
+    userMail?: string;
+};
+
+function todayISO() {
+    return new Date().toISOString().slice(0, 10);
+}
+
 export async function getQuiz(quizId: number): Promise<Quiz | null> {
     try {
         const q = await api.get<ApiQuiz>(`/api/quiz/${quizId}`);
         return {
             numeroQuiz: q.id,
             nomQuiz: q.nom,
-            dateCreation: q.dateCreation ?? new Date().toISOString().slice(0, 10),
+            dateCreation: q.dateCreation ?? todayISO(),
             type: q.type,
             image: q.image,
             moduleNom: q.moduleNom,
             lien: undefined,
         };
     } catch {
-        return null;
+        return mockQuizzes.find((x) => x.numeroQuiz === quizId) ?? null;
     }
 }
 
 export async function listQuestions(quizId: number): Promise<Question[]> {
-    const qs = await api.get<ApiQuestion[]>(`/api/quiz/${quizId}/questions`);
-    return qs
-        .slice()
-        .sort((a, b) => a.ordre - b.ordre)
-        .map((q) => ({
-            numeroQuestion: q.id,
-            enonce: q.enonce,
-            reponse: q.reponse,
-            ordreQuestion: q.ordre,
-            quizId,
-        }));
+    try {
+        const qs = await api.get<ApiQuestion[]>(`/api/quiz/${quizId}/questions`);
+        return qs
+            .slice()
+            .sort((a, b) => a.ordre - b.ordre)
+            .map((q) => ({
+                numeroQuestion: q.id,
+                enonce: q.enonce,
+                reponse: q.reponse,
+                ordreQuestion: q.ordre,
+                quizId,
+            }));
+    } catch {
+        return mockQuestions
+            .filter((q) => q.quizId === quizId)
+            .slice()
+            .sort((a, b) => a.ordreQuestion - b.ordreQuestion);
+    }
 }
 
-// TODO backend
-// - Tentative Quiz / Passer / Exercer (MCD)
 export async function submitQuiz(quizId: number, score: number): Promise<QuizResult> {
-    // On “consomme” les paramètres pour éviter le warning no-unused-vars,
-    // tout en gardant une signature compatible avec le frontend.
-    void quizId;
-    void score;
+    try {
+        const res = await api.post<ApiQuizResult>(`/api/quiz/${quizId}/submit`, { score });
 
-    throw new Error("submitQuiz: endpoint backend non défini (TODO)");
+        return {
+            userMail: res.userMail ?? mockUser.mail,
+            quizId: res.quizId ?? quizId,
+            score: res.score ?? score,
+            datePassage: res.datePassage ?? todayISO(),
+        };
+    } catch {
+        // fallback mock (mémoire)
+        const created: QuizResult = {
+            userMail: mockUser.mail,
+            quizId,
+            score,
+            datePassage: todayISO(),
+        };
+        mockQuizResults.unshift(created);
+        return created;
+    }
 }
 
 export async function listMyResults(): Promise<QuizResult[]> {
-    return [];
+    try {
+        const data = await api.get<ApiQuizResult[]>(`/api/my/results`);
+        return data
+            .slice()
+            .map((r) => ({
+                userMail: r.userMail ?? mockUser.mail,
+                quizId: r.quizId,
+                score: r.score,
+                datePassage: r.datePassage,
+            }))
+            .sort((a, b) => (a.datePassage < b.datePassage ? 1 : -1));
+    } catch {
+        return mockQuizResults
+            .filter((r) => r.userMail === mockUser.mail)
+            .slice()
+            .sort((a, b) => (a.datePassage < b.datePassage ? 1 : -1));
+    }
 }
 
 export async function listAllQuizzes(): Promise<Quiz[]> {
-    return [];
+    try {
+        const qs = await api.get<ApiQuiz[]>(`/api/quiz`);
+        return qs.map((q) => ({
+            numeroQuiz: q.id,
+            nomQuiz: q.nom,
+            dateCreation: q.dateCreation ?? todayISO(),
+            type: q.type,
+            image: q.image,
+            moduleNom: q.moduleNom,
+            lien: undefined,
+        }));
+    } catch {
+        return mockQuizzes.slice();
+    }
 }
 
 export async function listQuizzesByModule(moduleNom: string): Promise<Quiz[]> {
-    void moduleNom;
-    return [];
+    try {
+        const qs = await api.get<ApiQuiz[]>(
+            `/api/module/${encodeURIComponent(moduleNom)}/quizzes`
+        );
+        return qs.map((q) => ({
+            numeroQuiz: q.id,
+            nomQuiz: q.nom,
+            dateCreation: q.dateCreation ?? todayISO(),
+            type: q.type,
+            image: q.image,
+            moduleNom: q.moduleNom,
+            lien: undefined,
+        }));
+    } catch {
+        return mockQuizzes.filter((q) => q.moduleNom === moduleNom);
+    }
 }
-

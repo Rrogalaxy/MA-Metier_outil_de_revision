@@ -1,11 +1,12 @@
 // src/pages/ModulesPage.tsx
-import React, { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
-import { listMyModules } from "../services/modules.service";
+import { listMyModulesSmart } from "../services/modules.service";
 import type { UserModule } from "../types";
 
 export default function ModulesPage() {
     const [myModules, setMyModules] = useState<UserModule[]>([]);
+    const [source, setSource] = useState<"api" | "mock">("mock");
     const [loading, setLoading] = useState(true);
     const [err, setErr] = useState<string | null>(null);
 
@@ -16,9 +17,10 @@ export default function ModulesPage() {
             setLoading(true);
             setErr(null);
             try {
-                const data = await listMyModules();
+                const res = await listMyModulesSmart();
                 if (!mounted) return;
-                setMyModules(data);
+                setMyModules(res.items);
+                setSource(res.source);
             } catch (e) {
                 if (!mounted) return;
                 setErr(e instanceof Error ? e.message : "Impossible de charger les modules.");
@@ -38,9 +40,13 @@ export default function ModulesPage() {
             <div style={topRow}>
                 <div>
                     <h2 style={{ ...h2, marginBottom: 4 }}>Mes modules</h2>
-                    <div style={muted}>Liste des modules liés à ton profil (mock pour le moment)</div>
+                    <div style={muted}>
+                        Source : <b>{source === "api" ? "Backend ✅" : "Mocks ⚠️"}</b>
+                    </div>
                 </div>
-                <Link to="/" style={btnLink}>← Dashboard</Link>
+                <Link to="/" style={btnLink}>
+                    ← Dashboard
+                </Link>
             </div>
 
             {err && <div style={{ marginTop: 12, ...errorBox }}>{err}</div>}
@@ -52,11 +58,7 @@ export default function ModulesPage() {
             ) : (
                 <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                     {myModules.map((m) => (
-                        <Link
-                            key={m.moduleNom}
-                            to={`/modules/${encodeURIComponent(m.moduleNom)}`}
-                            style={tile}
-                        >
+                        <Link key={m.moduleNom} to={`/modules/${encodeURIComponent(m.moduleNom)}`} style={tile}>
                             <div style={{ fontWeight: 900 }}>{m.moduleNom}</div>
                             <div style={muted}>Difficulté: {m.difficulte}</div>
                             <div style={muted}>Prochaine alerte: {m.prochaineAlerte ?? "—"}</div>

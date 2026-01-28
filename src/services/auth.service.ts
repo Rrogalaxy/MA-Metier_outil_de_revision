@@ -1,24 +1,31 @@
 // src/services/auth.service.ts
 import { api, setToken } from "./http";
-import { setMockUser } from "./mockSession";
+import { clearMockUser, setMockUser } from "./mockSession";
+
+function normalizeEmail(email: string) {
+    return email.trim().toLowerCase();
+}
 
 /**
- * Token fake pour mode démo (quand backend KO)
+ * Mode démo (fallback)
+ * - met un token "demo-token" pour passer RequireAuth
+ * - stocke l’utilisateur mock (user.service.ts lira getMockUser())
  */
 function setFakeAuth(email: string, first_name: string, last_name: string) {
     setToken("demo-token");
-    setMockUser({ email, first_name, last_name });
+    setMockUser({ email: normalizeEmail(email), first_name, last_name });
 }
 
 export async function login(email: string, password: string) {
     try {
-        // Backend normal
-        const res = await api.post<{ token: string; type: string }>("/api/login", { email, password });
+        const res = await api.post<{ token: string; type?: string }>("/api/login", {
+            email,
+            password,
+        });
         setToken(res.token);
-        return res;
+        return { token: res.token, type: res.type ?? "backend" };
     } catch {
-        // Fallback démo
-        setFakeAuth(email.trim().toLowerCase(), "Démo", "User");
+        setFakeAuth(email, "Démo", "User");
         return { token: "demo-token", type: "demo" };
     }
 }
@@ -31,13 +38,12 @@ export async function register(payload: {
     last_name: string;
 }) {
     try {
-        const res = await api.post<{ token: string; type: string }>("/api/register", payload);
+        const res = await api.post<{ token: string; type?: string }>("/api/register", payload);
         setToken(res.token);
-        return res;
+        return { token: res.token, type: res.type ?? "backend" };
     } catch {
-        // Fallback démo
         setFakeAuth(
-            payload.email.trim().toLowerCase(),
+            payload.email,
             payload.first_name.trim() || "Démo",
             payload.last_name.trim() || "User"
         );
@@ -47,6 +53,5 @@ export async function register(payload: {
 
 export function logoutLocal() {
     setToken(null);
-    // On supprime aussi l’utilisateur mock
-    localStorage.removeItem("cpnv_mock_user");
+    clearMockUser();
 }

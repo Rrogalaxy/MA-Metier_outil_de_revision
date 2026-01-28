@@ -6,20 +6,26 @@ export type StudentClass = {
     class_year: string | number;
 };
 
-// ✅ Mocks pour démo
-const mockClasses: StudentClass[] = [
-    { class_id: "BTS-SIO", class_year: 2024 },
-    { class_id: "BTS-SIO", class_year: 2023 },
-    { class_id: "ES-INFO", class_year: 2024 },
-    { class_id: "ES-INFO", class_year: 2023 },
-];
-
 export async function listClasses(): Promise<StudentClass[]> {
+    return api.get<StudentClass[]>("/api/class");
+}
+
+// ✅ Mock simple et crédible
+function mockClasses(): StudentClass[] {
+    const years = [2024, 2025, 2026];
+    const ids = ["SI-CA2a", "SI-CA2b", "SI-CA3a", "SI-CA3b"];
+    const out: StudentClass[] = [];
+    for (const y of years) for (const id of ids) out.push({ class_id: id, class_year: y });
+    return out;
+}
+
+/**
+ * ✅ Smart: tente backend, sinon mock
+ */
+export async function listClassesSmart(): Promise<StudentClass[]> {
     try {
-        // si backend OK → on l’utilise
-        return await api.get<StudentClass[]>("/api/class");
+        return await listClasses();
     } catch {
-        // sinon → mocks
-        return mockClasses;
+        return mockClasses();
     }
 }
