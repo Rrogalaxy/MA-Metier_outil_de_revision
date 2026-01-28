@@ -12,28 +12,23 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('users', function (Blueprint $table) {
+            $table->id();
             $table->string('email', 60)->unique();
             $table->string('last_name', 30);
             $table->string('first_name', 30);
             $table->string('password');
 
-            $table->string('class_id', 50)->nullable();
-            $table->string('class_year', 50)->nullable();
-            $table->integer('entry-year');
+            $table->integer('entry_year');
             $table->string('role_name', 100);
 
             $table->index('role_name');
-            $table->index(['class_id', 'class_year']);
 
             $table->foreign('role_name')
                 ->references('role_name')->on('roles')
                 ->cascadeOnUpdate()
                 ->restrictOnDelete();
 
-            $table->foreign(['class_id', 'class_year'])
-                ->references(['class_id', 'class_year'])->on('classes')
-                ->cascadeOnUpdate()
-                ->nullOnDelete();
+            $table->foreignId('class_id')->nullable();
 
             $table->rememberToken();
 
@@ -60,10 +55,7 @@ return new class extends Migration
             $table->longText('payload');
             $table->integer('last_activity')->index();
 
-            $table->foreign('email')
-                ->references('email')->on('users')
-                ->cascadeOnUpdate()
-                ->cascadeOnDelete();
+            $table->foreignId('user_id')->nullable()->index();
         });
 
     }

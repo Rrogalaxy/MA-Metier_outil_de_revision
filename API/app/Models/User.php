@@ -4,6 +4,7 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -19,18 +20,20 @@ class User extends Authenticatable
      *
      * @var list<string>
      */
-    protected $primaryKey = 'email';
-    public $incrementing = false;
+    protected $primaryKey = 'id';
+    public $incrementing = true;
     protected $keyType = 'string';
+    protected $with = ['studentClass'];
 
     protected $fillable = [
         'email',
         'last_name',
         'first_name',
         'role_name',
+        'class_id',
         'class_name',
         'class_year',
-        'entry-year',
+        'entry_year',
         'password',
         'remember_token',
     ];
@@ -40,6 +43,8 @@ class User extends Authenticatable
         'last_name' => 'required|string',
         'first_name' => 'required|string',
         'role_name' => 'required|exists:roles|role_name',
+        'class_id' => 'integer',
+        'entry_year' => 'integer',
     ];
 
     public $timestamps = true;
@@ -72,8 +77,8 @@ class User extends Authenticatable
         return $this->hasOne(Role::class);
     }
 
-    public function class(): HasOne
+    public function studentClass(): BelongsTo
     {
-        return $this->hasOne(StudentClass::class);
+        return $this->belongsTo(StudentClass::class, 'class_id', 'class_id');
     }
 }

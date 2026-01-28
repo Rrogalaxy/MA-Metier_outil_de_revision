@@ -15,7 +15,7 @@ class AuthController extends Controller
     public function login(Request $request) : JsonResponse {
 
         $request->validate([
-            'email' => 'required||email|',
+            'email' => 'required|email',
             'password' => 'required',
         ]);
 
@@ -27,7 +27,7 @@ class AuthController extends Controller
             ], 401);
         }
 
-        $token = $this->createToken($user);
+        $token = $user->createToken('auth')->plainTextToken;
 
         return response()->json([
             'token' => $token,
@@ -49,11 +49,11 @@ class AuthController extends Controller
             return response()->json($validator->errors(), 400);
         }
 
-        $user = User::create(['email' => request('email'), 'password' => Hash::make(request('password')), 'first_name' => request('first_name'), 'last_name' => request('last_name'), 'role_name' => 'student', 'entry-year' => date('Y')]);
+        $user = User::create(['email' => request('email'), 'password' => Hash::make(request('password')), 'first_name' => request('first_name'), 'last_name' => request('last_name'), 'role_name' => 'student', 'entry_year' => date('Y')]);
         $user->setRememberToken(Str::random(10));
         $user->save();
 
-        $token = $this->createToken($user);
+        $token = $user->createToken('auth')->plainTextToken;
 
         return response()->json([
             'token' => $token,
@@ -61,17 +61,17 @@ class AuthController extends Controller
         ]);
     }
 
-    private function createToken($user)
+    /*private function createToken($user)
     {
         $plainToken = Str::random(40);
 
         PersonalAccessToken::create([
             'email' => $user->email,
-            'name' => 'api-token',
+            'name' => 'auth',
             'token' => hash('sha256', $plainToken),
             'abilities' => json_encode(['*']),
         ]);
 
         return $plainToken;
-    }
+    }*/
 }

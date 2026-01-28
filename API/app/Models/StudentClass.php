@@ -4,22 +4,33 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class StudentClass extends Model
 {
     protected $table = 'classes';
 
-    protected $fillable = ['class_id', 'class_year'];
+    protected $fillable = ['class_name', 'class_year'];
+
+    protected $with = ['courses'];
+
+    protected $primaryKey = 'class_id';
 
     public $timestamps = false;
 
     protected $rules = [
-        'class_id' => 'required|unique:classes|string|max:50',
+        'class_name' => 'required|string|max:50',
         'class_year' => 'required|integer|min:2010|max:2100',
     ];
 
-    public function users(): BelongsTo
+    public function users(): HasMany
     {
-        return $this->belongsTo(User::class);
+        return $this->hasMany(User::class, 'class_id');
+    }
+
+    public function courses(): BelongsToMany
+    {
+        return $this->belongsToMany(Course::class, 'course_class', 'class_id', 'course_id');
     }
 }
