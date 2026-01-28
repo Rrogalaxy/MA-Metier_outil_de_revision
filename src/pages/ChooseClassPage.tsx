@@ -1,8 +1,8 @@
 // src/pages/ChooseClassPage.tsx
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { listClasses, type StudentClass } from "../services/class.service";
-import { getMeApi, getLocalClass, updateMyClass } from "../services/user.service";
+import { listClassesSmart, type StudentClass } from "../services/class.service";
+import { getMeSmart, getLocalClass, updateMyClass } from "../services/user.service";
 
 export default function ChooseClassPage() {
     const [classes, setClasses] = useState<StudentClass[]>([]);
@@ -21,26 +21,38 @@ export default function ChooseClassPage() {
     }, [selected]);
 
     useEffect(() => {
-        (async () => {
+        let alive = true;
+
+        async function load() {
             setErr(null);
+            setInfo(null);
             setLoading(true);
+
             try {
-                const me = await getMeApi();
-                const cls = await listClasses();
+                const me = await getMeSmart(); // backend si OK sinon mock
+                const cls = await listClassesSmart(); // backend si OK sinon mock
+                if (!alive) return;
+
                 setClasses(cls);
 
-                // ✅ On lit la classe depuis localStorage (fallback dev)
                 const local = getLocalClass(me.email);
                 if (local) {
                     setSelected(`${local.class_id}|${local.class_year}`);
                     setInfo(`Classe actuelle : ${local.class_id} (${local.class_year})`);
                 }
+
+                setLoading(false);
             } catch (e) {
+                if (!alive) return;
                 setErr(e instanceof Error ? e.message : "Impossible de charger les classes");
-            } finally {
                 setLoading(false);
             }
-        })();
+        }
+
+        void load();
+        return () => {
+            alive = false;
+        };
     }, []);
 
     async function onSave() {
@@ -58,6 +70,7 @@ export default function ChooseClassPage() {
                 class_id: selectedObj.class_id,
                 class_year: selectedObj.class_year,
             });
+
             setInfo("Classe enregistrée ✅");
             navigate("/", { replace: true });
         } catch (e) {
@@ -88,13 +101,16 @@ export default function ChooseClassPage() {
                     <select style={input} value={selected} onChange={(e) => setSelected(e.target.value)}>
                         <option value="">— Sélectionner —</option>
                         {classes.map((c, i) => (
-                            <option key={`${c.class_id}-${c.class_year}-${i}`} value={`${c.class_id}|${c.class_year}`}>
+                            <option
+                                key={`${c.class_id}-${c.class_year}-${i}`}
+                                value={`${c.class_id}|${c.class_year}`}
+                            >
                                 {c.class_id} ({c.class_year})
                             </option>
                         ))}
                     </select>
 
-                    <button style={btnPrimary} disabled={saving || !selected} onClick={onSave}>
+                    <button style={btnPrimary} disabled={saving || !selected} onClick={() => void onSave()}>
                         {saving ? "Enregistrement…" : "Enregistrer"}
                     </button>
 

@@ -8,18 +8,33 @@ import { getLocalUserClass } from "../services/classLocal.service";
 export default function DashboardPage() {
     const [user, setUser] = useState<ApiUser | null>(null);
     const [err, setErr] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
 
     const navigate = useNavigate();
 
     useEffect(() => {
-        (async () => {
+        let alive = true;
+
+        async function load() {
+            setLoading(true);
+            setErr(null);
+
             try {
-                const me = await getMeSmart();
+                const me = await getMeSmart(); // backend si OK sinon mock
+                if (!alive) return;
                 setUser(me);
+                setLoading(false);
             } catch {
+                if (!alive) return;
                 setErr("Impossible de charger l’utilisateur");
+                setLoading(false);
             }
-        })();
+        }
+
+        void load();
+        return () => {
+            alive = false;
+        };
     }, []);
 
     const localClass = useMemo(() => {
@@ -48,29 +63,43 @@ export default function DashboardPage() {
                 </div>
             </div>
 
-            {user && (
-                <div style={{ marginBottom: 16 }}>
-                    <div style={{ fontWeight: 900 }}>
-                        {user.first_name} {user.last_name}
-                    </div>
-                    <div style={muted}>{user.email}</div>
-                </div>
-            )}
-
-            <div style={{ marginBottom: 14, ...muted }}>
-                Classe :{" "}
-                <b>
-                    {localClass ? `${localClass.class_id} (${localClass.class_year})` : "Non définie"}
-                </b>
-            </div>
-
             {err && <div style={errorBox}>{err}</div>}
 
-            <div style={grid}>
-                <Link to="/modules" style={cardLink}>📚 Modules</Link>
-                <Link to="/planning" style={cardLink}>🗓️ Planning</Link>
-                <Link to="/stats" style={cardLink}>📊 Statistiques</Link>
-            </div>
+            {loading ? (
+                <div style={{ marginTop: 8, ...muted }}>Chargement…</div>
+            ) : (
+                <>
+                    {user && (
+                        <div style={{ marginBottom: 16 }}>
+                            <div style={{ fontWeight: 900 }}>
+                                {user.first_name} {user.last_name}
+                            </div>
+                            <div style={muted}>{user.email}</div>
+                        </div>
+                    )}
+
+                    <div style={{ marginBottom: 14, ...muted }}>
+                        Classe :{" "}
+                        <b>
+                            {localClass
+                                ? `${localClass.class_id} (${localClass.class_year})`
+                                : "Non définie"}
+                        </b>
+                    </div>
+
+                    <div style={grid}>
+                        <Link to="/modules" style={cardLink}>
+                            📚 Modules
+                        </Link>
+                        <Link to="/planning" style={cardLink}>
+                            🗓️ Planning
+                        </Link>
+                        <Link to="/stats" style={cardLink}>
+                            📊 Statistiques
+                        </Link>
+                    </div>
+                </>
+            )}
         </section>
     );
 }

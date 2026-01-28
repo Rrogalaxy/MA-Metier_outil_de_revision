@@ -15,7 +15,15 @@ export function getMockUser(): MockUser | null {
     try {
         const raw = localStorage.getItem(KEY);
         if (!raw) return null;
-        return JSON.parse(raw) as MockUser;
+
+        const parsed = JSON.parse(raw) as Partial<MockUser>;
+        if (!parsed.email || !parsed.first_name || !parsed.last_name) return null;
+
+        return {
+            email: String(parsed.email),
+            first_name: String(parsed.first_name),
+            last_name: String(parsed.last_name),
+        };
     } catch {
         return null;
     }
