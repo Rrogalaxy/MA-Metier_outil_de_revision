@@ -20,8 +20,8 @@ class User extends Authenticatable
      *
      * @var list<string>
      */
-    protected $primaryKey = 'email';
-    public $incrementing = false;
+    protected $primaryKey = 'id';
+    public $incrementing = true;
     protected $keyType = 'string';
     protected $with = ['studentClass'];
 

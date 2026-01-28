@@ -10,9 +10,8 @@ use Illuminate\Support\Facades\Validator;
 
 class UserController extends Controller
 {
-    public function addUserToClass(Request $request) : JsonResponse
+    public function addStudentToClass(Request $request) : JsonResponse
     {
-
         $validator = Validator::make($request->all(), [
             'email' => 'required|email',
             'class_name' => 'required|string',
@@ -31,8 +30,20 @@ class UserController extends Controller
         $user->save();
 
         return response()->json([
-            //'data' => $user->studentClass,
             'content' => $user->last_name . ' ' . $user->first_name . ' fait partie de la classe ' . $user->studentClass->class_name
+        ]);
+    }
+
+    public function getUser(Request $request) : JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email',
+        ]);
+
+        $user = User::where('email', $request->email)->first();
+
+        return response()->json([
+        'user' => $user->toArray(),
         ]);
     }
 }

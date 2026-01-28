@@ -2,37 +2,35 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Role;
 use App\Models\StudentClass;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 
 class ClassController extends Controller
 {
-    public function create(Request $request) : JsonResponse {
-        $validator = Validator::make($request->all(), [
-            'class_name' => 'required|string',
-            'class_year' => 'require|integer',
-        ]);
-
-        if($validator->fails()){
-            return response()->json($validator->errors(), 400);
-        }
+    public function create(Request $request) : JsonResponse
+    {
+//        $user = auth()->user();
+//
+//        if($user && $user->role === )
 
         for($i = 0; $i <= 100; $i++)
         {
             $class = StudentClass::create([
-                'class_name' => request('class_name'),
+                'class_name' => $request->name,
                 'class_year' => date('Y', strtotime('+' . $i . 'year')),
             ]);
 
-            $class->save();
+            if (!$class->save()){
+                return response()->json([
+                    'errors' => $class->getErrors(),
+                ], 400);
+            }
         }
 
         return response()->json([
-            'content' => 'la classe ' . request('class_name') . ' a bien été créé',
+            'content' => 'la classe ' . $request->name . ' a bien été créé',
         ]);
     }
 
