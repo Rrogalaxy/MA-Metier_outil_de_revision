@@ -1,8 +1,8 @@
 // src/app/router.tsx
 import React from "react";
 import { createBrowserRouter } from "react-router-dom";
-import AppShell from "./AppShell";
 
+import AppShell from "./AppShell";
 import RequireAuth from "../components/RequireAuth";
 
 import DashboardPage from "../pages/DashboardPage";
@@ -11,9 +11,10 @@ import ModuleDetailPage from "../pages/ModuleDetailPage";
 import QuizPage from "../pages/QuizPage";
 import StatsPage from "../pages/StatsPage";
 import PlanningPage from "../pages/PlanningPage";
+import ChooseClassPage from "../pages/ChooseClassPage";
+
 import LoginPage from "../pages/LoginPage";
 import RegisterPage from "../pages/RegisterPage";
-import ChooseClassPage from "../pages/ChooseClassPage";
 
 export const router = createBrowserRouter([
     // Routes publiques
@@ -29,12 +30,11 @@ export const router = createBrowserRouter([
                 element: <AppShell />,
                 children: [
                     { index: true, element: <DashboardPage /> },
-
-                    // ✅ Ajout : page choisir classe
                     { path: "choose-class", element: <ChooseClassPage /> },
 
                     { path: "modules", element: <ModulesPage /> },
                     { path: "modules/:moduleNom", element: <ModuleDetailPage /> },
+
                     { path: "quiz/:quizId", element: <QuizPage /> },
                     { path: "stats", element: <StatsPage /> },
                     { path: "planning", element: <PlanningPage /> },
@@ -42,4 +42,7 @@ export const router = createBrowserRouter([
             },
         ],
     },
+
+    // fallback (optionnel)
+    { path: "*", element: <LoginPage /> },
 ]);

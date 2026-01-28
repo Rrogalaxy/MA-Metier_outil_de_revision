@@ -32,13 +32,11 @@
  * Retour :
  * - une Promise (on peut donc utiliser `await`)
  */
-export async function fakeDelay(ms = 150) {
-    /**
-     * new Promise((r) => setTimeout(r, ms))
-     *
-     * - setTimeout déclenche une fonction après ms millisecondes
-     * - la Promise se "résout" grâce à r()
-     * - await attend que cette Promise se termine
-     */
-    await new Promise((r) => setTimeout(r, ms));
+// src/services/api.ts (exemple)
+export async function fakeDelay(ms = 250) {
+    const fast = import.meta.env.VITE_FAST_MOCKS === "true";
+    const delay = fast ? 0 : ms;
+    if (delay <= 0) return;
+    await new Promise((r) => setTimeout(r, delay));
 }
+

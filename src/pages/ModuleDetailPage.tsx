@@ -1,86 +1,131 @@
 // src/pages/ModuleDetailPage.tsx
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link, useParams } from "react-router-dom";
-import { listMyModulesSmart, upsertMyModule } from "../services/modules.service";
+import { listMyModules, upsertMyModule } from "../services/modules.service";
 import { listQuizzesByModule } from "../services/quiz.service";
 import type { Quiz, UserModule } from "../types";
+import { getCache } from "../services/cache";
+import { mockUser } from "../services/mockDb";
 
-/* =======================
-   Helpers
-   ======================= */
+const TTL = 60_000;
 
+/** YYYY-MM-DD de "today + days" */
 function addDaysISO(days: number) {
     const d = new Date();
     d.setDate(d.getDate() + days);
     return d.toISOString().slice(0, 10);
 }
 
+/** Règle simple :
+ * - 1 => 7 jours
+ * - 5 => 1 jour
+ */
 function nextAlertDaysFromDifficulty(difficulty: number) {
     const map: Record<number, number> = { 1: 7, 2: 5, 3: 3, 4: 2, 5: 1 };
     return map[Math.max(1, Math.min(5, difficulty))] ?? 3;
 }
 
-/* =======================
-   Page
-   ======================= */
-
 export default function ModuleDetailPage() {
     const { moduleNom } = useParams();
 
-    const decodedModule = useMemo(() => decodeURIComponent(moduleNom ?? ""), [moduleNom]);
+    const decodedModule = useMemo(() => {
+        try {
+            return decodeURIComponent(moduleNom ?? "");
+        } catch {
+            return moduleNom ?? "";
+        }
+    }, [moduleNom]);
 
-    const [myModule, setMyModule] = useState<UserModule | null>(null);
+    // ✅ cache key pour mes modules
+    const myModulesKey = `modules:mine:${mockUser.mail}`;
+
+    // ✅ 1) init depuis cache (si dispo)
+    const cachedMyModules = useMemo(() => {
+        return getCache<UserModule[]>(myModulesKey, TTL) ?? null;
+    }, [myModulesKey]);
+
+    const initialMine = useMemo(() => {
+        if (!decodedModule) return null;
+        if (!cachedMyModules) return null;
+        return cachedMyModules.find((m) => m.moduleNom === decodedModule) ?? null;
+    }, [cachedMyModules, decodedModule]);
+
+    const [myModule, setMyModule] = useState<UserModule | null>(initialMine);
     const [quizzes, setQuizzes] = useState<Quiz[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [difficulty, setDifficulty] = useState<number>(initialMine?.difficulte ?? 3);
 
-    // UI
-    const [difficulty, setDifficulty] = useState<number>(3);
+    // ✅ loading seulement si on n'a aucune donnée à afficher (progression + quizzes vides)
+    const [loading, setLoading] = useState(() => initialMine === null);
+    const [err, setErr] = useState<string | null>(null);
+
     const [saving, setSaving] = useState(false);
     const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
-    // "api" | "mock" pour la progression perso (Travailler)
-    const [source, setSource] = useState<"api" | "mock">("mock");
+    const timerRef = useRef<number | null>(null);
 
     useEffect(() => {
-        let cancelled = false;
+        return () => {
+            if (timerRef.current) window.clearTimeout(timerRef.current);
+        };
+    }, []);
+
+    useEffect(() => {
+        let alive = true;
 
         async function load() {
-            if (!decodedModule) return;
+            if (!decodedModule) {
+                setLoading(false);
+                return;
+            }
 
-            setLoading(true);
+            // si on a déjà qqch à afficher, refresh sans loading
+            const shouldShowLoading = myModule === null && quizzes.length === 0;
+            if (shouldShowLoading) setLoading(true);
+
+            setErr(null);
             setSaveMsg(null);
 
             try {
-                const [modsRes, qs] = await Promise.all([
-                    listMyModulesSmart(),
-                    listQuizzesByModule(decodedModule),
+                const [mods, qs] = await Promise.all([
+                    listMyModules(), // cache TTL côté service
+                    listQuizzesByModule(decodedModule), // smart backend/mock
                 ]);
 
-                if (cancelled) return;
+                if (!alive) return;
 
-                setSource(modsRes.source);
-
-                const mine = modsRes.items.find((m) => m.moduleNom === decodedModule) ?? null;
+                const mine = mods.find((m) => m.moduleNom === decodedModule) ?? null;
                 setMyModule(mine);
-                setDifficulty(mine?.difficulte ?? 3);
                 setQuizzes(qs);
-            } catch {
-                if (cancelled) return;
-                // Même si ça plante, on garde une page affichable
-                setMyModule(null);
-                setQuizzes([]);
-                setDifficulty(3);
+
+                // si on n'était pas en train de saisir une diff pendant le load,
+                // on synchronise la difficulté
+                setDifficulty((prev) => {
+                    // si l'utilisateur a déjà changé la valeur (diffère de mine),
+                    // on respecte son input (sauf si mine=null)
+                    if (mine?.difficulte == null) return prev;
+                    return prev;
+                });
+
+                // On force quand même l'init correcte si mine existe et qu'on n'a jamais changé
+                if (mine) setDifficulty(mine.difficulte ?? 3);
+            } catch (e) {
+                if (!alive) return;
+
+                // erreur seulement si on n'a rien à afficher
+                if (myModule === null && quizzes.length === 0) {
+                    setErr(e instanceof Error ? e.message : "Impossible de charger le module.");
+                }
             } finally {
-                if (cancelled) return;
-                setLoading(false);
+                if (!alive) return;
+                if (shouldShowLoading) setLoading(false);
             }
         }
 
         void load();
-
         return () => {
-            cancelled = true;
+            alive = false;
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [decodedModule]);
 
     async function saveDifficulty() {
@@ -102,11 +147,13 @@ export default function ModuleDetailPage() {
 
             setMyModule(saved);
             setSaveMsg("Progression enregistrée.");
-        } catch {
-            setSaveMsg("Erreur lors de l’enregistrement.");
+        } catch (e) {
+            setSaveMsg(e instanceof Error ? e.message : "Erreur lors de l’enregistrement.");
         } finally {
             setSaving(false);
-            setTimeout(() => setSaveMsg(null), 2500);
+
+            if (timerRef.current) window.clearTimeout(timerRef.current);
+            timerRef.current = window.setTimeout(() => setSaveMsg(null), 2500);
         }
     }
 
@@ -115,27 +162,16 @@ export default function ModuleDetailPage() {
             <section style={card}>
                 <h2 style={h2}>Module introuvable</h2>
                 <div style={muted}>Nom de module invalide.</div>
-                <div style={{ marginTop: 10 }}>
-                    <Link to="/modules" style={btnLink}>
-                        ← Retour
-                    </Link>
-                </div>
             </section>
         );
     }
 
     return (
         <section style={card}>
-            {/* Header */}
             <div style={headerRow}>
                 <div>
                     <h2 style={{ ...h2, marginBottom: 4 }}>{decodedModule}</h2>
-                    <div style={muted}>
-                        Détails du module • progression personnelle + contenus partagés
-                    </div>
-                    <div style={{ marginTop: 6, ...muted }}>
-                        Source progression : <b>{source === "api" ? "Backend ✅" : "Mocks ⚠️"}</b>
-                    </div>
+                    <div style={muted}>Progression + quiz liés</div>
                 </div>
 
                 <Link to="/modules" style={btnLink}>
@@ -143,13 +179,18 @@ export default function ModuleDetailPage() {
                 </Link>
             </div>
 
+            {/* ✅ erreur seulement si pas de contenu */}
+            {err && myModule === null && quizzes.length === 0 && (
+                <div style={{ marginTop: 12, ...errorBox }}>{err}</div>
+            )}
+
             {loading ? (
                 <div style={{ marginTop: 12, ...muted }}>Chargement…</div>
             ) : (
                 <div style={grid}>
-                    {/* Col 1 : progression */}
+                    {/* Progression */}
                     <div style={subCard}>
-                        <h3 style={h3}>Ma progression (Travailler)</h3>
+                        <h3 style={h3}>Ma progression</h3>
 
                         <div style={rowWrap}>
                             <label style={muted}>Difficulté :</label>
@@ -166,7 +207,11 @@ export default function ModuleDetailPage() {
                                 <option value={5}>5 – Difficile</option>
                             </select>
 
-                            <button onClick={() => void saveDifficulty()} style={btnPrimary} disabled={saving}>
+                            <button
+                                onClick={() => void saveDifficulty()}
+                                style={btnPrimary}
+                                disabled={saving}
+                            >
                                 {saving ? "Enregistrement…" : "Enregistrer"}
                             </button>
                         </div>
@@ -187,18 +232,16 @@ export default function ModuleDetailPage() {
                         </div>
                     </div>
 
-                    {/* Col 2 : contenus partagés */}
+                    {/* Quiz */}
                     <div style={subCard}>
-                        <h3 style={h3}>Quiz & Flashcards (partagés)</h3>
+                        <h3 style={h3}>Quiz & Flashcards</h3>
 
                         {quizzes.length === 0 ? (
-                            <div style={muted}>
-                                Aucun quiz disponible (mock/backend non branché).
-                            </div>
+                            <div style={muted}>Aucun quiz disponible.</div>
                         ) : (
                             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                                 {quizzes.map((q) => (
-                                    <div key={q.numeroQuiz} style={row}>
+                                    <div key={q.numeroQuiz} style={quizRow}>
                                         <div style={{ flex: 1 }}>
                                             <div style={{ fontWeight: 800 }}>{q.nomQuiz}</div>
                                             <div style={muted}>
@@ -223,10 +266,6 @@ export default function ModuleDetailPage() {
         </section>
     );
 }
-
-/* =======================
-   Styles
-   ======================= */
 
 const card: CSSProperties = {
     border: "1px solid rgba(0,0,0,0.12)",
@@ -256,7 +295,7 @@ const grid: CSSProperties = {
     gap: 12,
 };
 
-const row: CSSProperties = {
+const quizRow: CSSProperties = {
     display: "flex",
     gap: 10,
     alignItems: "center",
@@ -273,7 +312,6 @@ const rowWrap: CSSProperties = {
 
 const h2: CSSProperties = { margin: "0 0 10px 0", fontSize: 18 };
 const h3: CSSProperties = { margin: "0 0 10px 0", fontSize: 14 };
-
 const muted: CSSProperties = { opacity: 0.75, fontSize: 13 };
 
 const note: CSSProperties = {
@@ -283,6 +321,14 @@ const note: CSSProperties = {
     fontSize: 13,
     opacity: 0.9,
     background: "rgba(0,0,0,0.03)",
+};
+
+const errorBox: CSSProperties = {
+    border: "1px solid rgba(0,0,0,0.18)",
+    borderRadius: 12,
+    padding: 10,
+    background: "rgba(0,0,0,0.03)",
+    fontSize: 13,
 };
 
 const btn: CSSProperties = {
@@ -304,7 +350,6 @@ const btnPrimary: CSSProperties = {
 
 const btnLink: CSSProperties = {
     ...btn,
-    background: "white",
 };
 
 const select: CSSProperties = {

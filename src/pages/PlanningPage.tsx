@@ -1,21 +1,14 @@
 // src/pages/PlanningPage.tsx
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
-import {
-    addMyActivity,
-    deleteMyActivity,
-    listMyActivities,
-} from "../services/planning.service";
-import {
-    clearSchoolEvents,
-    getSchoolEvents,
-    importSchoolIcs,
-} from "../services/schoolSchedule.service";
+
+import { addMyActivity, deleteMyActivity, listMyActivities } from "../services/planning.service";
+import { clearSchoolEvents, getSchoolEvents, importSchoolIcs } from "../services/schoolSchedule.service";
+
 import type { Activity } from "../types";
 import type { IcsEvent } from "../lib/ics";
 
 /** ===== Types UI ===== */
-
 type FormState = {
     nomActivite: string;
     date: string; // YYYY-MM-DD
@@ -37,7 +30,7 @@ type FreeSlot = {
 type CalendarBlock = {
     id: string;
     dayISO: string; // YYYY-MM-DD
-    startMin: number; // minutes depuis minuit
+    startMin: number;
     endMin: number;
     title: string;
     subtitle?: string;
@@ -47,14 +40,6 @@ type CalendarBlock = {
 
 /** ===== Utils dates / heures ===== */
 
-/**
- * IMPORTANT :
- * On évite toISOString().slice(0,10) pour les dates "jour" (YYYY-MM-DD),
- * car toISOString() est en UTC → peut décaler le jour selon ton fuseau horaire,
- * et casser la logique de "début de semaine".
- *
- * Ici on formate en "local" avec getFullYear/getMonth/getDate.
- */
 function toLocalISODate(d: Date) {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -70,21 +55,15 @@ function isValidTime(t: string) {
     return /^\d{2}:\d{2}$/.test(t);
 }
 
-/** Affiche "HH:mm" à partir d'un ISO "YYYY-MM-DDTHH:mm" ou "YYYY-MM-DDTHH:mm:ss" */
 function timeHHMM(iso: string) {
     const timePart = iso.split("T")[1] ?? "00:00";
     return timePart.slice(0, 5);
 }
 
-/**
- * Retourne le lundi de la semaine du jour donné.
- * - getDay() : 0=Dim, 1=Lun, ..., 6=Sam
- * - On veut que la semaine affichée commence toujours par LUNDI.
- */
 function startOfWeekMonday(dayISO: string) {
     const d = new Date(`${dayISO}T00:00:00`);
     const day = d.getDay(); // 0=dim, 1=lun...
-    const diffToMonday = day === 0 ? 6 : day - 1; // dim -> recule 6j, mar -> recule 1j, etc.
+    const diffToMonday = day === 0 ? 6 : day - 1;
     d.setDate(d.getDate() - diffToMonday);
     d.setHours(0, 0, 0, 0);
     return toLocalISODate(d);
@@ -97,10 +76,6 @@ function addDaysISO(dayISO: string, n: number) {
     return toLocalISODate(d);
 }
 
-/**
- * ✅ Minutes depuis minuit (robuste)
- * Prend iso "YYYY-MM-DDTHH:mm" ou "YYYY-MM-DDTHH:mm:ss"
- */
 function minutesSinceMidnight(iso: string) {
     const timePart = iso.split("T")[1] ?? "00:00";
     const [hhStr, mmStr] = timePart.split(":");
@@ -116,7 +91,6 @@ function minsToHHMM(mins: number) {
 }
 
 /** ===== Conversion vers BusySlot ===== */
-
 function toBusyFromIcs(events: IcsEvent[]): BusySlot[] {
     return events.map((e) => ({
         startISO: e.startISO,
@@ -134,7 +108,6 @@ function toBusyFromActivities(activities: Activity[]): BusySlot[] {
 }
 
 /** ===== Génération de créneaux libres ===== */
-
 function generateFreeSlotsForDay(params: {
     dayISO: string;
     busy: BusySlot[];
@@ -146,14 +119,8 @@ function generateFreeSlotsForDay(params: {
     const busyOfDay = busy
         .filter((b) => b.startISO.slice(0, 10) === dayISO)
         .map((b) => ({
-            start: Math.max(
-                minutesSinceMidnight(b.startISO),
-                workingHours.startHour * 60
-            ),
-            end: Math.min(
-                minutesSinceMidnight(b.endISO),
-                workingHours.endHour * 60
-            ),
+            start: Math.max(minutesSinceMidnight(b.startISO), workingHours.startHour * 60),
+            end: Math.min(minutesSinceMidnight(b.endISO), workingHours.endHour * 60),
         }))
         .filter((b) => b.end > b.start)
         .sort((a, b) => a.start - b.start);
@@ -197,21 +164,17 @@ function generateFreeSlotsForDay(params: {
 }
 
 /** ===== Page ===== */
-
 export default function PlanningPage() {
     const [items, setItems] = useState<Activity[]>([]);
     const [err, setErr] = useState<string | null>(null);
 
     const [schoolEvents, setSchoolEvents] = useState<IcsEvent[]>([]);
-
-    // ✅ Messages UI import ICS
     const [icsErr, setIcsErr] = useState<string | null>(null);
     const [icsInfo, setIcsInfo] = useState<string | null>(null);
 
-    // ✅ Message UI validation formulaire
     const [formTouched, setFormTouched] = useState(false);
-
     const [saving, setSaving] = useState(false);
+
     const [form, setForm] = useState<FormState>({
         nomActivite: "",
         date: todayISO(),
@@ -219,15 +182,8 @@ export default function PlanningPage() {
         heureFin: "19:00",
     });
 
-    // ✅ semaine affichée (lundi)
-    const [weekStartISO, setWeekStartISO] = useState(() =>
-        startOfWeekMonday(todayISO())
-    );
+    const [weekStartISO, setWeekStartISO] = useState(() => startOfWeekMonday(todayISO()));
 
-    /**
-     * ✅ IMPORTANT : ordre des colonnes = LUNDI → DIMANCHE
-     * C'est CE tableau qui contrôle l'ordre d'affichage des jours.
-     */
     const days = useMemo(
         () => [0, 1, 2, 3, 4, 5, 6].map((i) => addDaysISO(weekStartISO, i)),
         [weekStartISO]
@@ -280,7 +236,7 @@ export default function PlanningPage() {
         const out: Record<string, CalendarBlock[]> = {};
         for (const d of days) out[d] = [];
 
-        // free blocks (en fond)
+        // free blocks (fond)
         for (const d of days) {
             for (const f of freeByDay[d] ?? []) {
                 out[d].push({
@@ -317,12 +273,8 @@ export default function PlanningPage() {
                 id: `priv-${a.numeroActivites}`,
                 activityId: a.numeroActivites,
                 dayISO: d,
-                startMin:
-                    Number(a.heureDebut.slice(0, 2)) * 60 +
-                    Number(a.heureDebut.slice(3, 5)),
-                endMin:
-                    Number(a.heureFin.slice(0, 2)) * 60 +
-                    Number(a.heureFin.slice(3, 5)),
+                startMin: Number(a.heureDebut.slice(0, 2)) * 60 + Number(a.heureDebut.slice(3, 5)),
+                endMin: Number(a.heureFin.slice(0, 2)) * 60 + Number(a.heureFin.slice(3, 5)),
                 title: a.nomActivite,
                 subtitle: "Privé",
                 kind: "private",
@@ -342,7 +294,6 @@ export default function PlanningPage() {
         return out;
     }, [days, freeByDay, schoolEvents, items]);
 
-    // ✅ message de validation détaillé (plutôt qu'un simple bool)
     const formError = useMemo(() => {
         if (form.nomActivite.trim().length < 2) return "Nom trop court (min 2 caractères).";
         if (!form.date) return "Date manquante.";
@@ -351,10 +302,11 @@ export default function PlanningPage() {
         return null;
     }, [form]);
 
-    const canSubmit = useMemo(() => formError === null, [formError]);
+    const canSubmit = formError === null;
 
     async function onAdd() {
         setFormTouched(true);
+        setErr(null);
 
         if (formError) {
             setErr(formError);
@@ -362,8 +314,6 @@ export default function PlanningPage() {
         }
 
         setSaving(true);
-        setErr(null);
-
         try {
             await addMyActivity({
                 nomActivite: form.nomActivite.trim(),
@@ -371,7 +321,6 @@ export default function PlanningPage() {
                 heureDebut: form.heureDebut,
                 heureFin: form.heureFin,
             });
-
             setForm((f) => ({ ...f, nomActivite: "" }));
             await reloadActivities();
         } catch {
@@ -396,46 +345,30 @@ export default function PlanningPage() {
             <div style={topRow}>
                 <div>
                     <h2 style={{ ...h2, marginBottom: 4 }}>Planning</h2>
-                    <div style={muted}>
-                        Vue semaine (Lun → Dim) • cours (.ics) + activités privées + créneaux libres
-                    </div>
+                    <div style={muted}>Semaine (Lun → Dim) • cours (.ics) + activités + créneaux libres</div>
                 </div>
-                <Link to="/dashboard" style={btnLink}>
+                <Link to="/" style={btnLink}>
                     ← Dashboard
                 </Link>
             </div>
 
-            {/* Barre semaine */}
             <div style={weekBar}>
-                <button
-                    style={btn}
-                    onClick={() => setWeekStartISO(addDaysISO(weekStartISO, -7))}
-                >
+                <button style={btn} onClick={() => setWeekStartISO(addDaysISO(weekStartISO, -7))}>
                     ←
                 </button>
 
                 <div style={{ fontWeight: 900 }}>
                     Semaine du{" "}
-                    <span
-                        style={{
-                            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-                        }}
-                    >
+                    <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
                         {weekStartISO}
                     </span>
                 </div>
 
-                <button
-                    style={btn}
-                    onClick={() => setWeekStartISO(addDaysISO(weekStartISO, 7))}
-                >
+                <button style={btn} onClick={() => setWeekStartISO(addDaysISO(weekStartISO, 7))}>
                     →
                 </button>
 
-                <button
-                    style={btn}
-                    onClick={() => setWeekStartISO(startOfWeekMonday(todayISO()))}
-                >
+                <button style={btn} onClick={() => setWeekStartISO(startOfWeekMonday(todayISO()))}>
                     Aujourd’hui
                 </button>
 
@@ -447,28 +380,15 @@ export default function PlanningPage() {
                 />
             </div>
 
-            {/* Calendrier */}
             <div style={{ marginTop: 12 }}>
                 <h3 style={h3}>Calendrier (semaine)</h3>
-                <WeekCalendar
-                    days={days}
-                    blocksByDay={blocksByDay}
-                    onDeleteActivity={onDelete}
-                />
+                <WeekCalendar days={days} blocksByDay={blocksByDay} onDeleteActivity={onDelete} />
             </div>
 
-            {/* Import .ics */}
             <div style={{ marginTop: 18 }}>
                 <h3 style={h3}>Horaire scolaire (.ics)</h3>
 
-                <div
-                    style={{
-                        display: "flex",
-                        gap: 10,
-                        flexWrap: "wrap",
-                        alignItems: "center",
-                    }}
-                >
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                     <input
                         type="file"
                         accept=".ics,text/calendar"
@@ -479,17 +399,9 @@ export default function PlanningPage() {
                             const file = e.target.files?.[0];
                             if (!file) return;
 
-                            // ✅ Bloque les fichiers non-.ics (évite crash)
                             const nameOk = file.name.toLowerCase().endsWith(".ics");
-                            const typeOk =
-                                file.type === "text/calendar" ||
-                                file.type === "application/octet-stream" ||
-                                file.type === "";
-
-                            if (!nameOk || !typeOk) {
-                                setIcsErr(
-                                    "Fichier invalide. Merci de sélectionner un fichier .ics (calendrier)."
-                                );
+                            if (!nameOk) {
+                                setIcsErr("Fichier invalide. Sélectionne un fichier .ics.");
                                 e.currentTarget.value = "";
                                 return;
                             }
@@ -499,18 +411,14 @@ export default function PlanningPage() {
                                 const ev = await importSchoolIcs(text);
 
                                 if (!ev || ev.length === 0) {
-                                    setIcsErr(
-                                        "Le fichier .ics a été importé, mais aucun événement n’a été détecté."
-                                    );
+                                    setIcsErr("Import OK, mais aucun événement détecté.");
                                     setSchoolEvents([]);
                                 } else {
                                     setSchoolEvents(ev);
                                     setIcsInfo(`Import réussi : ${ev.length} cours détectés.`);
                                 }
                             } catch {
-                                setIcsErr(
-                                    "Impossible d’importer ce fichier .ics (format non reconnu ou corrompu)."
-                                );
+                                setIcsErr("Impossible d’importer ce fichier .ics.");
                             } finally {
                                 e.currentTarget.value = "";
                             }
@@ -534,20 +442,11 @@ export default function PlanningPage() {
                     </span>
                 </div>
 
-                {/* ✅ Messages import */}
                 {icsErr && <div style={{ marginTop: 10, ...errorBox }}>{icsErr}</div>}
                 {icsInfo && <div style={{ marginTop: 10, ...infoBox }}>{icsInfo}</div>}
 
-                {/* Petit aperçu (debug) */}
                 {schoolEvents.length > 0 && (
-                    <div
-                        style={{
-                            marginTop: 10,
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 6,
-                        }}
-                    >
+                    <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
                         {schoolEvents.slice(0, 5).map((c, i) => (
                             <div key={i} style={miniRow}>
                                 <div
@@ -562,8 +461,7 @@ export default function PlanningPage() {
                                     {c.summary}
                                 </div>
                                 <div style={muted}>
-                                    {c.startISO.slice(0, 10)} • {timeHHMM(c.startISO)} →{" "}
-                                    {timeHHMM(c.endISO)}
+                                    {c.startISO.slice(0, 10)} • {timeHHMM(c.startISO)} → {timeHHMM(c.endISO)}
                                 </div>
                             </div>
                         ))}
@@ -571,7 +469,6 @@ export default function PlanningPage() {
                 )}
             </div>
 
-            {/* Formulaire activités */}
             <div style={{ marginTop: 18 }}>
                 <h3 style={h3}>Ajouter une activité (privée)</h3>
 
@@ -629,58 +526,22 @@ export default function PlanningPage() {
                     </div>
 
                     <div style={{ display: "flex", alignItems: "flex-end" }}>
-                        <button
-                            style={btnPrimary}
-                            disabled={!canSubmit || saving}
-                            onClick={() => void onAdd()}
-                        >
+                        <button style={btnPrimary} disabled={!canSubmit || saving} onClick={() => void onAdd()}>
                             {saving ? "Ajout…" : "Ajouter"}
                         </button>
                     </div>
                 </div>
 
-                {/* ✅ Message explicite de validation */}
-                {formTouched && formError && (
-                    <div style={{ marginTop: 10, ...errorBox }}>{formError}</div>
-                )}
-
+                {formTouched && formError && <div style={{ marginTop: 10, ...errorBox }}>{formError}</div>}
                 {err && <div style={{ marginTop: 10, ...errorBox }}>{err}</div>}
-            </div>
-
-            {/* Debug : créneaux libres */}
-            <div style={{ marginTop: 18 }}>
-                <h3 style={h3}>Créneaux libres détectés (semaine)</h3>
-
-                {days.map((d) => (
-                    <div key={d} style={dayListCard}>
-                        <div style={{ fontWeight: 900, marginBottom: 6 }}>{d}</div>
-                        {(freeByDay[d]?.length ?? 0) === 0 ? (
-                            <div style={muted}>
-                                Aucun créneau ≥ 20 min entre 08:00 et 18:00.
-                            </div>
-                        ) : (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                                {freeByDay[d].map((s, i) => (
-                                    <div key={i} style={miniRow}>
-                                        <div style={{ fontWeight: 800 }}>
-                                            {timeHHMM(s.startISO)} → {timeHHMM(s.endISO)}
-                                        </div>
-                                        <div style={muted}>Libre</div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                ))}
             </div>
         </section>
     );
 }
 
-/** ===== Calendrier semaine (style Outlook simplifié) ===== */
-
+/** ===== Calendrier semaine ===== */
 function WeekCalendar(props: {
-    days: string[]; // ✅ ordre déjà LUNDI→DIMANCHE
+    days: string[];
     blocksByDay: Record<string, CalendarBlock[]>;
     onDeleteActivity: (id: number) => void;
 }) {
@@ -696,22 +557,13 @@ function WeekCalendar(props: {
 
     function dayLabel(dISO: string) {
         const dt = new Date(`${dISO}T00:00:00`);
-        const day = dt.getDay(); // 0=Dim,1=Lun,...6=Sam
-        const names: Record<number, string> = {
-            1: "Lun",
-            2: "Mar",
-            3: "Mer",
-            4: "Jeu",
-            5: "Ven",
-            6: "Sam",
-            0: "Dim",
-        };
+        const day = dt.getDay(); // 0=Dim, 1=Lun...
+        const names: Record<number, string> = { 1: "Lun", 2: "Mar", 3: "Mer", 4: "Jeu", 5: "Ven", 6: "Sam", 0: "Dim" };
         return `${names[day]} ${dISO.slice(8, 10)}`;
     }
 
     return (
         <div style={calWrap}>
-            {/* Header */}
             <div style={calHeader}>
                 <div style={timeColHeader} />
                 {days.map((d) => (
@@ -721,9 +573,7 @@ function WeekCalendar(props: {
                 ))}
             </div>
 
-            {/* Body */}
             <div style={calBody}>
-                {/* Time column */}
                 <div style={{ ...timeCol, height: totalHeight }}>
                     {hourLabels.map((h) => (
                         <div key={h} style={{ ...timeLabel, height: pxPerHour }}>
@@ -732,10 +582,8 @@ function WeekCalendar(props: {
                     ))}
                 </div>
 
-                {/* Day columns (Lun → Dim) */}
                 {days.map((d) => (
                     <div key={d} style={{ ...dayCol, height: totalHeight }}>
-                        {/* hour grid */}
                         {Array.from({ length: hourCount }, (_, i) => (
                             <div
                                 key={i}
@@ -759,23 +607,13 @@ function WeekCalendar(props: {
                             const height = ((end - start) / 60) * pxPerHour;
 
                             if (b.kind === "free") {
-                                return (
-                                    <div
-                                        key={b.id}
-                                        style={{ ...freeBlock, top, height }}
-                                        title={`Libre ${minsToHHMM(start)} → ${minsToHHMM(end)}`}
-                                    />
-                                );
+                                return <div key={b.id} style={{ ...freeBlock, top, height }} />;
                             }
 
                             const style = b.kind === "school" ? schoolBlock : privateBlock;
 
                             return (
-                                <div
-                                    key={b.id}
-                                    style={{ ...style, top, height }}
-                                    title={`${b.title} ${minsToHHMM(start)} → ${minsToHHMM(end)}`}
-                                >
+                                <div key={b.id} style={{ ...style, top, height }}>
                                     <div style={blockTitle}>{b.title}</div>
                                     <div style={blockMeta}>
                                         {minsToHHMM(start)} → {minsToHHMM(end)}
@@ -785,7 +623,7 @@ function WeekCalendar(props: {
                                     {b.kind === "private" && typeof b.activityId === "number" && (
                                         <button
                                             style={miniDelete}
-                                            onClick={() => onDeleteActivity(b.activityId!)}
+                                            onClick={() => onDeleteActivity(b.activityId as number)}
                                             title="Supprimer"
                                         >
                                             ✕
@@ -802,7 +640,6 @@ function WeekCalendar(props: {
 }
 
 /** ===== Styles ===== */
-
 const card: CSSProperties = {
     border: "1px solid rgba(0,0,0,0.12)",
     borderRadius: 14,
@@ -906,7 +743,15 @@ const btnDanger: CSSProperties = {
     cursor: "pointer",
 };
 
-/* Calendar layout */
+const miniRow: CSSProperties = {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 10,
+    padding: "8px 0",
+    borderBottom: "1px solid rgba(0,0,0,0.06)",
+};
+
+/* Calendar */
 const calWrap: CSSProperties = {
     border: "1px solid rgba(0,0,0,0.10)",
     borderRadius: 14,
@@ -992,7 +837,6 @@ const privateBlock: CSSProperties = {
     overflow: "hidden",
 };
 
-/* Anti-débordement texte */
 const blockTitle: CSSProperties = {
     fontWeight: 900,
     fontSize: 12,
@@ -1030,21 +874,4 @@ const miniDelete: CSSProperties = {
     padding: "2px 6px",
     fontSize: 12,
     lineHeight: 1,
-};
-
-/* Debug free slots list */
-const dayListCard: CSSProperties = {
-    border: "1px solid rgba(0,0,0,0.10)",
-    borderRadius: 14,
-    padding: 12,
-    background: "white",
-    marginBottom: 10,
-};
-
-const miniRow: CSSProperties = {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 10,
-    padding: "8px 0",
-    borderBottom: "1px solid rgba(0,0,0,0.06)",
 };

@@ -4,11 +4,25 @@ import { Link, useNavigate } from "react-router-dom";
 import { logoutLocal } from "../services/auth.service";
 import { getMeSmart, type ApiUser } from "../services/user.service";
 import { getLocalUserClass } from "../services/classLocal.service";
+import { getMockUser } from "../services/mockSession";
 
 export default function DashboardPage() {
-    const [user, setUser] = useState<ApiUser | null>(null);
+    // ✅ init immédiat si on a un mockUser en localStorage (démo / backend KO)
+    const [user, setUser] = useState<ApiUser | null>(() => {
+        const mu = getMockUser();
+        if (!mu) return null;
+        return {
+            email: mu.email,
+            first_name: mu.first_name,
+            last_name: mu.last_name,
+            class_id: null,
+            class_year: null,
+        };
+    });
+
+    // ✅ loading seulement si on n'a encore rien
+    const [loading, setLoading] = useState(() => user === null);
     const [err, setErr] = useState<string | null>(null);
-    const [loading, setLoading] = useState(true);
 
     const navigate = useNavigate();
 
@@ -16,18 +30,23 @@ export default function DashboardPage() {
         let alive = true;
 
         async function load() {
-            setLoading(true);
+            const shouldShowLoading = user === null;
+            if (shouldShowLoading) setLoading(true);
+
             setErr(null);
 
             try {
                 const me = await getMeSmart(); // backend si OK sinon mock
                 if (!alive) return;
                 setUser(me);
-                setLoading(false);
             } catch {
                 if (!alive) return;
-                setErr("Impossible de charger l’utilisateur");
-                setLoading(false);
+
+                // erreur seulement si on n'a pas déjà un user affichable
+                if (user === null) setErr("Impossible de charger l’utilisateur");
+            } finally {
+                if (!alive) return;
+                if (shouldShowLoading) setLoading(false);
             }
         }
 
@@ -35,6 +54,7 @@ export default function DashboardPage() {
         return () => {
             alive = false;
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const localClass = useMemo(() => {
@@ -63,7 +83,8 @@ export default function DashboardPage() {
                 </div>
             </div>
 
-            {err && <div style={errorBox}>{err}</div>}
+            {/* ✅ erreur seulement si pas d'utilisateur */}
+            {err && !user && <div style={errorBox}>{err}</div>}
 
             {loading ? (
                 <div style={{ marginTop: 8, ...muted }}>Chargement…</div>

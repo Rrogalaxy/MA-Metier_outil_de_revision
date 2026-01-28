@@ -3,36 +3,49 @@ import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { listMyResults } from "../services/quiz.service";
 import type { QuizResult } from "../types";
+import { getCache } from "../services/cache";
+import { mockUser } from "../services/mockDb";
+
+const TTL = 60_000;
 
 export default function StatsPage() {
-    const [results, setResults] = useState<QuizResult[]>([]);
+    const cacheKey = `quiz:results:${mockUser.mail}`;
+
+    const [results, setResults] = useState<QuizResult[]>(() => {
+        return getCache<QuizResult[]>(cacheKey, TTL) ?? [];
+    });
+
     const [err, setErr] = useState<string | null>(null);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(() => results.length === 0);
 
     useEffect(() => {
-        let alive = true;
+        let mounted = true;
 
-        async function load() {
-            setLoading(true);
+        const shouldShowLoading = results.length === 0;
+        if (shouldShowLoading) setLoading(true);
+
+        (async () => {
             setErr(null);
-
             try {
-                const r = await listMyResults(); // backend si OK sinon mock
-                if (!alive) return;
+                const r = await listMyResults();
+                if (!mounted) return;
                 setResults(r);
-                setLoading(false);
             } catch (e) {
-                if (!alive) return;
-                setErr(e instanceof Error ? e.message : "Impossible de charger les stats");
-                setLoading(false);
+                if (!mounted) return;
+                if (results.length === 0) {
+                    setErr(e instanceof Error ? e.message : "Impossible de charger les stats");
+                }
+            } finally {
+                if (!mounted) return;
+                if (shouldShowLoading) setLoading(false);
             }
-        }
+        })();
 
-        void load();
         return () => {
-            alive = false;
+            mounted = false;
         };
-    }, []);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // pas de dépendance "results" -> refresh silencieux sans boucle
 
     const avgScore = useMemo(() => {
         if (results.length === 0) return null;
@@ -70,12 +83,10 @@ export default function StatsPage() {
                             <div style={summaryLabel}>Tentatives</div>
                             <div style={summaryValue}>{results.length}</div>
                         </div>
-
                         <div style={summaryCard}>
                             <div style={summaryLabel}>Moyenne</div>
                             <div style={summaryValue}>{avgScore}%</div>
                         </div>
-
                         <div style={summaryCard}>
                             <div style={summaryLabel}>Meilleur</div>
                             <div style={summaryValue}>{bestScore}%</div>
