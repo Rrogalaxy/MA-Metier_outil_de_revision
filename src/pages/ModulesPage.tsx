@@ -1,38 +1,55 @@
 // src/pages/ModulesPage.tsx
 import { useEffect, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
-import { listMyModulesSmart } from "../services/modules.service";
+import { listMyModules } from "../services/modules.service";
 import type { UserModule } from "../types";
+import { getCache } from "../services/cache";
+import { mockUser } from "../services/mockDb";
+
+const TTL = 60_000;
 
 export default function ModulesPage() {
-    const [myModules, setMyModules] = useState<UserModule[]>([]);
-    const [source, setSource] = useState<"api" | "mock">("mock");
-    const [loading, setLoading] = useState(true);
+    const cacheKey = `modules:mine:${mockUser.mail}`;
+
+    // ✅ 1) On affiche immédiatement le cache si dispo
+    const [myModules, setMyModules] = useState<UserModule[]>(() => {
+        return getCache<UserModule[]>(cacheKey, TTL) ?? [];
+    });
+
+    // ✅ 2) Loading seulement si on n'a rien en cache
+    const [loading, setLoading] = useState(() => myModules.length === 0);
     const [err, setErr] = useState<string | null>(null);
 
     useEffect(() => {
         let mounted = true;
 
+        // Si on a déjà du cache, on refresh sans remettre loading
+        const shouldShowLoading = myModules.length === 0;
+        if (shouldShowLoading) setLoading(true);
+
         (async () => {
-            setLoading(true);
             setErr(null);
             try {
-                const res = await listMyModulesSmart();
+                const data = await listMyModules(); // ✅ service gère cache TTL
                 if (!mounted) return;
-                setMyModules(res.items);
-                setSource(res.source);
+                setMyModules(data);
             } catch (e) {
                 if (!mounted) return;
-                setErr(e instanceof Error ? e.message : "Impossible de charger les modules.");
+
+                // si pas de cache, on affiche une erreur
+                if (myModules.length === 0) {
+                    setErr(e instanceof Error ? e.message : "Impossible de charger les modules.");
+                }
             } finally {
                 if (!mounted) return;
-                setLoading(false);
+                if (shouldShowLoading) setLoading(false);
             }
         })();
 
         return () => {
             mounted = false;
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     return (
@@ -40,16 +57,18 @@ export default function ModulesPage() {
             <div style={topRow}>
                 <div>
                     <h2 style={{ ...h2, marginBottom: 4 }}>Mes modules</h2>
-                    <div style={muted}>
-                        Source : <b>{source === "api" ? "Backend ✅" : "Mocks ⚠️"}</b>
-                    </div>
+                    <div style={muted}>Liste des modules liés à ton profil</div>
                 </div>
+
                 <Link to="/" style={btnLink}>
                     ← Dashboard
                 </Link>
             </div>
 
-            {err && <div style={{ marginTop: 12, ...errorBox }}>{err}</div>}
+            {/* ✅ erreur seulement si on n'a rien à afficher */}
+            {err && myModules.length === 0 && (
+                <div style={{ marginTop: 12, ...errorBox }}>{err}</div>
+            )}
 
             {loading ? (
                 <div style={{ marginTop: 12, ...muted }}>Chargement…</div>
@@ -58,7 +77,11 @@ export default function ModulesPage() {
             ) : (
                 <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                     {myModules.map((m) => (
-                        <Link key={m.moduleNom} to={`/modules/${encodeURIComponent(m.moduleNom)}`} style={tile}>
+                        <Link
+                            key={m.moduleNom}
+                            to={`/modules/${encodeURIComponent(m.moduleNom)}`}
+                            style={tile}
+                        >
                             <div style={{ fontWeight: 900 }}>{m.moduleNom}</div>
                             <div style={muted}>Difficulté: {m.difficulte}</div>
                             <div style={muted}>Prochaine alerte: {m.prochaineAlerte ?? "—"}</div>

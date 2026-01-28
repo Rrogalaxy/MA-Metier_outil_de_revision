@@ -1,68 +1,61 @@
+// src/services/planning.service.ts
 /**
- * planning.service.ts
- * -------------------
  * Service lié au PLANNING PERSONNEL de l’utilisateur.
  *
- * Correspond aux entités :
- * - Activites
- * - Agender (relation utilisateur ↔ activité)
- *
- * Objectif :
- * - Ajouter / supprimer des activités privées
- * - Les afficher dans le planning
+ * Mode:
+ * - Backend si dispo (API)
+ * - Sinon fallback mockDb (démo)
  */
-
+import { api } from "./http";
 import { fakeDelay } from "./api";
 import { mockActivities, mockUser } from "./mockDb";
 import type { Activity } from "../types";
 
-/**
- * Transforme une date ISO (YYYY-MM-DD) en nom du jour
- *
- * Exemple :
- * - "2026-01-12" → "Lundi"
- *
- * Sert uniquement à l'affichage (UX),
- * ce champ pourrait aussi être calculé côté backend.
- */
+/** Payload attendu par le backend pour créer une activité */
+type ApiCreateActivity = {
+    nomActivite: string;
+    date: string; // YYYY-MM-DD
+    heureDebut: string; // HH:mm
+    heureFin: string; // HH:mm
+};
+
+/** Shape possible d’une activité renvoyée par l’API */
+type ApiActivity = {
+    numeroActivites: number;
+    userMail?: string;
+    nomActivite: string;
+    date: string;
+    heureDebut: string;
+    heureFin: string;
+    jour?: string;
+};
+
 function dayNameFromISO(dateISO: string): string {
     const d = new Date(`${dateISO}T00:00:00`);
-
-    const names = [
-        "Dimanche",
-        "Lundi",
-        "Mardi",
-        "Mercredi",
-        "Jeudi",
-        "Vendredi",
-        "Samedi",
-    ] as const;
-
+    const names = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"] as const;
     return names[d.getDay()];
 }
 
-/**
- * Liste des activités PRIVÉES de l’utilisateur connecté
- *
- * Étapes :
- * 1. Filtrer les activités de l’utilisateur
- * 2. Trier par date
- * 3. Trier par heure de début
- *
- * Résultat :
- * - Activités prêtes à être affichées dans le planning
- */
-export async function listMyActivities(): Promise<Activity[]> {
-    await fakeDelay();
+function toActivity(a: ApiActivity): Activity {
+    return {
+        numeroActivites: a.numeroActivites,
+        userMail: a.userMail ?? mockUser.mail,
+        nomActivite: a.nomActivite,
+        date: a.date,
+        heureDebut: a.heureDebut,
+        heureFin: a.heureFin,
+        jour: a.jour ?? dayNameFromISO(a.date),
+    };
+}
 
-    return mockActivities
-        // On garde uniquement les activités de l'utilisateur connecté
-        .filter(a => a.userMail === mockUser.mail)
+/** ===== Backend calls ===== */
 
-        // Copie du tableau pour éviter effets de bord
+async function listMyActivitiesApi(): Promise<Activity[]> {
+    // Endpoint à adapter si ton backend utilise un autre chemin
+    const data = await api.get<ApiActivity[]>("/api/my/activities");
+    return data
+        .map(toActivity)
         .slice()
-
-        // Tri par date puis par heure
         .sort((a, b) => {
             const d = a.date.localeCompare(b.date);
             if (d !== 0) return d;
@@ -70,64 +63,92 @@ export async function listMyActivities(): Promise<Activity[]> {
         });
 }
 
-/**
- * Ajoute une nouvelle activité privée
- *
- * input :
- * - données saisies dans le formulaire
- * - sans id, userMail ni jour (calculés automatiquement)
- */
-export async function addMyActivity(
+async function addMyActivityApi(input: ApiCreateActivity): Promise<Activity> {
+    const created = await api.post<ApiActivity>("/api/my/activities", input);
+    return toActivity(created);
+}
+
+async function deleteMyActivityApi(numeroActivites: number): Promise<void> {
+    // Endpoint à adapter si besoin
+    await api.del<void>(`/api/my/activities/${numeroActivites}`);
+}
+
+/** ===== Mock fallback ===== */
+
+async function listMyActivitiesMock(): Promise<Activity[]> {
+    await fakeDelay();
+
+    return mockActivities
+        .filter((a) => a.userMail === mockUser.mail)
+        .slice()
+        .sort((a, b) => {
+            const d = a.date.localeCompare(b.date);
+            if (d !== 0) return d;
+            return a.heureDebut.localeCompare(b.heureDebut);
+        });
+}
+
+async function addMyActivityMock(
     input: Omit<Activity, "numeroActivites" | "userMail" | "jour">
 ): Promise<Activity> {
     await fakeDelay();
 
-    // Génération d’un nouvel identifiant
-    // (équivalent d’un auto-increment en base de données)
     const nextId =
-        (mockActivities.reduce(
-            (max, a) => Math.max(max, a.numeroActivites),
-            0
-        ) || 0) + 1;
+        (mockActivities.reduce((max, a) => Math.max(max, a.numeroActivites), 0) || 0) + 1;
 
     const created: Activity = {
         numeroActivites: nextId,
-        userMail: mockUser.mail,              // utilisateur connecté
+        userMail: mockUser.mail,
         nomActivite: input.nomActivite,
         date: input.date,
         heureDebut: input.heureDebut,
         heureFin: input.heureFin,
-        jour: dayNameFromISO(input.date),     // calcul automatique
+        jour: dayNameFromISO(input.date),
     };
 
-    // Ajout en tête (comme un INSERT)
     mockActivities.unshift(created);
-
     return created;
 }
 
-/**
- * Supprime une activité privée
- *
- * On vérifie :
- * - que l’activité appartient bien à l’utilisateur connecté
- *
- * En vrai backend :
- * - cette vérification serait obligatoire côté serveur
- */
-export async function deleteMyActivity(
-    numeroActivites: number
-): Promise<void> {
+async function deleteMyActivityMock(numeroActivites: number): Promise<void> {
     await fakeDelay();
 
     const idx = mockActivities.findIndex(
-        a =>
-            a.userMail === mockUser.mail &&
-            a.numeroActivites === numeroActivites
+        (a) => a.userMail === mockUser.mail && a.numeroActivites === numeroActivites
     );
 
-    if (idx >= 0) {
-        // Suppression "en place"
-        mockActivities.splice(idx, 1);
+    if (idx >= 0) mockActivities.splice(idx, 1);
+}
+
+/** ===== Public API (smart) ===== */
+
+export async function listMyActivities(): Promise<Activity[]> {
+    try {
+        return await listMyActivitiesApi();
+    } catch {
+        return await listMyActivitiesMock();
+    }
+}
+
+export async function addMyActivity(
+    input: Omit<Activity, "numeroActivites" | "userMail" | "jour">
+): Promise<Activity> {
+    try {
+        return await addMyActivityApi({
+            nomActivite: input.nomActivite,
+            date: input.date,
+            heureDebut: input.heureDebut,
+            heureFin: input.heureFin,
+        });
+    } catch {
+        return await addMyActivityMock(input);
+    }
+}
+
+export async function deleteMyActivity(numeroActivites: number): Promise<void> {
+    try {
+        await deleteMyActivityApi(numeroActivites);
+    } catch {
+        await deleteMyActivityMock(numeroActivites);
     }
 }

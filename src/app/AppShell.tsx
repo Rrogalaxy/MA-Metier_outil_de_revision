@@ -2,6 +2,12 @@
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { logoutLocal } from "../services/auth.service";
 
+// ✅ Prefetch (cache warmup)
+import { listMyModules } from "../services/modules.service";
+import { listMyResults } from "../services/quiz.service";
+import { listMyActivities } from "../services/planning.service";
+import { listClassesSmart } from "../services/class.service";
+
 const navLinkStyle = ({ isActive }: { isActive: boolean }) => ({
     padding: "8px 10px",
     borderRadius: 10,
@@ -39,20 +45,39 @@ export default function AppShell() {
                         Dashboard
                     </NavLink>
 
-                    <NavLink to="/modules" style={navLinkStyle}>
+                    <NavLink
+                        to="/modules"
+                        style={navLinkStyle}
+                        onMouseEnter={() => { void listMyModules(); }}
+                        onFocus={() => { void listMyModules(); }}
+                    >
                         Modules
                     </NavLink>
 
-                    <NavLink to="/planning" style={navLinkStyle}>
+                    <NavLink
+                        to="/planning"
+                        style={navLinkStyle}
+                        onMouseEnter={() => { void listMyActivities(); }}
+                        onFocus={() => { void listMyActivities(); }}
+                    >
                         Planning
                     </NavLink>
 
-                    <NavLink to="/stats" style={navLinkStyle}>
+                    <NavLink
+                        to="/stats"
+                        style={navLinkStyle}
+                        onMouseEnter={() => { void listMyResults(); }}
+                        onFocus={() => { void listMyResults(); }}
+                    >
                         Stats
                     </NavLink>
 
-                    {/* ✅ Bonus utile en démo */}
-                    <NavLink to="/choose-class" style={navLinkStyle}>
+                    <NavLink
+                        to="/choose-class"
+                        style={navLinkStyle}
+                        onMouseEnter={() => { void listClassesSmart(); }}
+                        onFocus={() => { void listClassesSmart(); }}
+                    >
                         Classe
                     </NavLink>
 
