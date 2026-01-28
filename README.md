@@ -71,6 +71,7 @@ Une fois le projet téléchargé et mis dans un dossier, prenez le path de vote 
 Utilisez Windows powershell ISE ou Windows Powershell (version terminal standard) pour vous placer dans le dossier et télécharger les dépendances :
 
 cd "$env:USERPROFILE\Desktop\revisions-poc-frontend" 
+
 npm.cmd install
 
  <img width="945" height="282" alt="image" src="https://github.com/user-attachments/assets/7be0e653-84d2-4340-84bb-c4d8550a674b" />
