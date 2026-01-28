@@ -1,11 +1,13 @@
 // src/app/AppShell.tsx
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useEffect } from "react";
 import { logoutLocal } from "../services/auth.service";
 
-// ✅ Prefetch (cache warmup)
-import { listMyModules } from "../services/modules.service";
+import { getMeSmart } from "../services/user.service";
+import { listSharedModules, listMyModules } from "../services/modules.service";
 import { listMyResults } from "../services/quiz.service";
 import { listMyActivities } from "../services/planning.service";
+import { getSchoolEvents } from "../services/schoolSchedule.service";
 import { listClassesSmart } from "../services/class.service";
 
 const navLinkStyle = ({ isActive }: { isActive: boolean }) => ({
@@ -25,80 +27,94 @@ export default function AppShell() {
         navigate("/login", { replace: true });
     }
 
+    // Préchargement pour navigation fluide
+    useEffect(() => {
+        (async () => {
+            try {
+                await getMeSmart();
+                await Promise.allSettled([
+                    listSharedModules(),
+                    listMyModules(),
+                    listMyResults(),
+                    listMyActivities(),
+                    getSchoolEvents(),
+                    listClassesSmart(),
+                ]);
+            } catch {
+                /* ignore */
+            }
+        })();
+    }, []);
+
     return (
-        <div style={{ fontFamily: "system-ui", padding: 20, maxWidth: 1100, margin: "0 auto" }}>
-            <header
+        // 🔥 CENTRAGE TOTAL (horizontal + vertical)
+        <div
+            style={{
+                minHeight: "100vh",
+                display: "flex",
+                alignItems: "center",   // vertical
+                justifyContent: "center", // horizontal
+                padding: 24,
+                boxSizing: "border-box",
+            }}
+        >
+            <div
                 style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    flexWrap: "wrap",
-                    alignItems: "center",
+                    width: "100%",
+                    maxWidth: 1100,
+                    fontFamily: "system-ui",
                 }}
             >
-                <Link to="/" style={{ textDecoration: "none", color: "#111" }}>
-                    <h1 style={{ margin: 0, fontSize: 22 }}>Révisions</h1>
-                </Link>
+                <header
+                    style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                        marginBottom: 16,
+                    }}
+                >
+                    <Link to="/" style={{ textDecoration: "none", color: "#111" }}>
+                        <h1 style={{ margin: 0, fontSize: 22 }}>Révisions</h1>
+                    </Link>
 
-                <nav style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                    <NavLink to="/" end style={navLinkStyle}>
-                        Dashboard
-                    </NavLink>
+                    <nav style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <NavLink to="/" end style={navLinkStyle}>
+                            Dashboard
+                        </NavLink>
+                        <NavLink to="/modules" style={navLinkStyle}>
+                            Modules
+                        </NavLink>
+                        <NavLink to="/planning" style={navLinkStyle}>
+                            Planning
+                        </NavLink>
+                        <NavLink to="/stats" style={navLinkStyle}>
+                            Stats
+                        </NavLink>
+                        <NavLink to="/choose-class" style={navLinkStyle}>
+                            Classe
+                        </NavLink>
 
-                    <NavLink
-                        to="/modules"
-                        style={navLinkStyle}
-                        onMouseEnter={() => { void listMyModules(); }}
-                        onFocus={() => { void listMyModules(); }}
-                    >
-                        Modules
-                    </NavLink>
+                        <button
+                            onClick={onLogout}
+                            style={{
+                                padding: "8px 10px",
+                                borderRadius: 10,
+                                border: "1px solid rgba(0,0,0,0.12)",
+                                background: "white",
+                                cursor: "pointer",
+                            }}
+                        >
+                            Logout
+                        </button>
+                    </nav>
+                </header>
 
-                    <NavLink
-                        to="/planning"
-                        style={navLinkStyle}
-                        onMouseEnter={() => { void listMyActivities(); }}
-                        onFocus={() => { void listMyActivities(); }}
-                    >
-                        Planning
-                    </NavLink>
-
-                    <NavLink
-                        to="/stats"
-                        style={navLinkStyle}
-                        onMouseEnter={() => { void listMyResults(); }}
-                        onFocus={() => { void listMyResults(); }}
-                    >
-                        Stats
-                    </NavLink>
-
-                    <NavLink
-                        to="/choose-class"
-                        style={navLinkStyle}
-                        onMouseEnter={() => { void listClassesSmart(); }}
-                        onFocus={() => { void listClassesSmart(); }}
-                    >
-                        Classe
-                    </NavLink>
-
-                    <button
-                        onClick={onLogout}
-                        style={{
-                            padding: "8px 10px",
-                            borderRadius: 10,
-                            border: "1px solid rgba(0,0,0,0.12)",
-                            background: "white",
-                            cursor: "pointer",
-                        }}
-                    >
-                        Logout
-                    </button>
-                </nav>
-            </header>
-
-            <main style={{ marginTop: 16 }}>
-                <Outlet />
-            </main>
+                <main>
+                    <Outlet />
+                </main>
+            </div>
         </div>
     );
 }
