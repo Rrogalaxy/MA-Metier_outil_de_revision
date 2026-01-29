@@ -33,7 +33,8 @@ export default function ChooseClassPage() {
                 const cls = await listClassesSmart(); // backend si OK sinon mock
                 if (!alive) return;
 
-                setClasses(cls);
+                // ✅ Toujours garantir un tableau
+                setClasses(Array.isArray(cls) ? cls : []);
 
                 const local = getLocalClass(me.email);
                 if (local) {
@@ -100,14 +101,22 @@ export default function ChooseClassPage() {
 
                     <select style={input} value={selected} onChange={(e) => setSelected(e.target.value)}>
                         <option value="">— Sélectionner —</option>
-                        {classes.map((c, i) => (
-                            <option
-                                key={`${c.class_id}-${c.class_year}-${i}`}
-                                value={`${c.class_id}|${c.class_year}`}
-                            >
-                                {c.class_id} ({c.class_year})
+
+                        {Array.isArray(classes) && classes.length > 0 ? (
+                            classes.map((c, i) => (
+                                <option
+                                    key={`${c.class_id}-${c.class_year}-${i}`}
+                                    value={`${c.class_id}|${c.class_year}`}
+                                >
+                                    {/* ✅ On affiche le nom lisible */}
+                                    {c.class_name} ({c.class_year})
+                                </option>
+                            ))
+                        ) : (
+                            <option value="" disabled>
+                                Aucune classe disponible
                             </option>
-                        ))}
+                        )}
                     </select>
 
                     <button style={btnPrimary} disabled={saving || !selected} onClick={() => void onSave()}>

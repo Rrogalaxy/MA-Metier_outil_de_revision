@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { logoutLocal } from "../services/auth.service";
 import { getMeSmart, type ApiUser } from "../services/user.service";
 import { getLocalUserClass } from "../services/classLocal.service";
+import { listClassesSmart } from "../services/class.service";
 import { getMockUser } from "../services/mockSession";
 
 export default function DashboardPage() {
@@ -24,6 +25,9 @@ export default function DashboardPage() {
     const [loading, setLoading] = useState(() => user === null);
     const [err, setErr] = useState<string | null>(null);
 
+    // ✅ nom lisible de la classe (pour afficher class_name au lieu de class_id)
+    const [classLabel, setClassLabel] = useState<string | null>(null);
+
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -39,6 +43,23 @@ export default function DashboardPage() {
                 const me = await getMeSmart(); // backend si OK sinon mock
                 if (!alive) return;
                 setUser(me);
+
+                // ✅ Charger le nom de la classe choisie (depuis l’API des classes)
+                const local = getLocalUserClass(me.email);
+                if (local) {
+                    const all = await listClassesSmart();
+                    const found = all.find(
+                        (c) =>
+                            c.class_id === local.class_id &&
+                            String(c.class_year) === String(local.class_year)
+                    );
+
+                    if (!alive) return;
+                    setClassLabel(found?.class_name ?? local.class_id);
+                } else {
+                    if (!alive) return;
+                    setClassLabel(null);
+                }
             } catch {
                 if (!alive) return;
 
@@ -103,7 +124,7 @@ export default function DashboardPage() {
                         Classe :{" "}
                         <b>
                             {localClass
-                                ? `${localClass.class_id} (${localClass.class_year})`
+                                ? `${classLabel ?? localClass.class_id} (${localClass.class_year})`
                                 : "Non définie"}
                         </b>
                     </div>
