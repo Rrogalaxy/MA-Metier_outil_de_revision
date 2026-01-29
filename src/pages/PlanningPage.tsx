@@ -184,6 +184,7 @@ export default function PlanningPage() {
 
     const [weekStartISO, setWeekStartISO] = useState(() => startOfWeekMonday(todayISO()));
 
+    // ✅ Toujours 7 jours (Lun → Dim)
     const days = useMemo(
         () => [0, 1, 2, 3, 4, 5, 6].map((i) => addDaysISO(weekStartISO, i)),
         [weekStartISO]
@@ -382,6 +383,8 @@ export default function PlanningPage() {
 
             <div style={{ marginTop: 12 }}>
                 <h3 style={h3}>Calendrier (semaine)</h3>
+
+                {/* ✅ Calendrier semaine complet + scroll vertical pour les heures */}
                 <WeekCalendar days={days} blocksByDay={blocksByDay} onDeleteActivity={onDelete} />
             </div>
 
@@ -539,7 +542,12 @@ export default function PlanningPage() {
     );
 }
 
-/** ===== Calendrier semaine ===== */
+/** ===== Calendrier semaine =====
+ * Objectif :
+ * - Afficher la semaine entière (7 colonnes)
+ * - Garder la même “taille visible” qu’avant (≈ 10h * 60px = 600px)
+ * - Permettre de SCROLL verticalement pour voir jusqu’à 24:00
+ */
 function WeekCalendar(props: {
     days: string[];
     blocksByDay: Record<string, CalendarBlock[]>;
@@ -547,8 +555,14 @@ function WeekCalendar(props: {
 }) {
     const { days, blocksByDay, onDeleteActivity } = props;
 
+    // ✅ Affichage : même fenêtre visible qu'avant (8→18 = 10h)
+    const visibleStartHour = 8;
+    const visibleEndHour = 18;
+
+    // ✅ Contenu scrollable : 8→24 pour pouvoir descendre jusqu’à fin de journée
     const startHour = 8;
-    const endHour = 18;
+    const endHour = 24;
+
     const hourCount = endHour - startHour;
     const pxPerHour = 60;
     const totalHeight = hourCount * pxPerHour;
@@ -562,8 +576,12 @@ function WeekCalendar(props: {
         return `${names[day]} ${dISO.slice(8, 10)}`;
     }
 
+    // ✅ Scroll : hauteur visible ~ celle d'avant (10h * 60px = 600px)
+    const visibleHeight = (visibleEndHour - visibleStartHour) * pxPerHour; // 600
+
     return (
         <div style={calWrap}>
+            {/* Header (fixe) */}
             <div style={calHeader}>
                 <div style={timeColHeader} />
                 {days.map((d) => (
@@ -573,67 +591,73 @@ function WeekCalendar(props: {
                 ))}
             </div>
 
-            <div style={calBody}>
-                <div style={{ ...timeCol, height: totalHeight }}>
-                    {hourLabels.map((h) => (
-                        <div key={h} style={{ ...timeLabel, height: pxPerHour }}>
-                            {String(h).padStart(2, "0")}:00
+            {/* Body (scroll vertical) */}
+            <div style={{ ...calBodyScroll, maxHeight: visibleHeight }}>
+                <div style={calBody}>
+                    {/* Time column */}
+                    <div style={{ ...timeCol, height: totalHeight }}>
+                        {hourLabels.map((h) => (
+                            <div key={h} style={{ ...timeLabel, height: pxPerHour }}>
+                                {String(h).padStart(2, "0")}:00
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Day columns (7 jours) */}
+                    {days.map((d) => (
+                        <div key={d} style={{ ...dayCol, height: totalHeight }}>
+                            {/* hour grid */}
+                            {Array.from({ length: hourCount }, (_, i) => (
+                                <div
+                                    key={i}
+                                    style={{
+                                        position: "absolute",
+                                        left: 0,
+                                        right: 0,
+                                        top: i * pxPerHour,
+                                        height: pxPerHour,
+                                        borderTop: "1px solid rgba(0,0,0,0.06)",
+                                    }}
+                                />
+                            ))}
+
+                            {(blocksByDay[d] ?? []).map((b) => {
+                                const start = Math.max(b.startMin, startHour * 60);
+                                const end = Math.min(b.endMin, endHour * 60);
+                                if (end <= start) return null;
+
+                                const top = ((start - startHour * 60) / 60) * pxPerHour;
+                                const height = ((end - start) / 60) * pxPerHour;
+
+                                if (b.kind === "free") {
+                                    return <div key={b.id} style={{ ...freeBlock, top, height }} />;
+                                }
+
+                                const style = b.kind === "school" ? schoolBlock : privateBlock;
+
+                                return (
+                                    <div key={b.id} style={{ ...style, top, height }}>
+                                        <div style={blockTitle}>{b.title}</div>
+                                        <div style={blockMeta}>
+                                            {minsToHHMM(start)} → {minsToHHMM(end)}
+                                        </div>
+                                        {b.subtitle && <div style={blockSub}>{b.subtitle}</div>}
+
+                                        {b.kind === "private" && typeof b.activityId === "number" && (
+                                            <button
+                                                style={miniDelete}
+                                                onClick={() => onDeleteActivity(b.activityId as number)}
+                                                title="Supprimer"
+                                            >
+                                                ✕
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            })}
                         </div>
                     ))}
                 </div>
-
-                {days.map((d) => (
-                    <div key={d} style={{ ...dayCol, height: totalHeight }}>
-                        {Array.from({ length: hourCount }, (_, i) => (
-                            <div
-                                key={i}
-                                style={{
-                                    position: "absolute",
-                                    left: 0,
-                                    right: 0,
-                                    top: i * pxPerHour,
-                                    height: pxPerHour,
-                                    borderTop: "1px solid rgba(0,0,0,0.06)",
-                                }}
-                            />
-                        ))}
-
-                        {(blocksByDay[d] ?? []).map((b) => {
-                            const start = Math.max(b.startMin, startHour * 60);
-                            const end = Math.min(b.endMin, endHour * 60);
-                            if (end <= start) return null;
-
-                            const top = ((start - startHour * 60) / 60) * pxPerHour;
-                            const height = ((end - start) / 60) * pxPerHour;
-
-                            if (b.kind === "free") {
-                                return <div key={b.id} style={{ ...freeBlock, top, height }} />;
-                            }
-
-                            const style = b.kind === "school" ? schoolBlock : privateBlock;
-
-                            return (
-                                <div key={b.id} style={{ ...style, top, height }}>
-                                    <div style={blockTitle}>{b.title}</div>
-                                    <div style={blockMeta}>
-                                        {minsToHHMM(start)} → {minsToHHMM(end)}
-                                    </div>
-                                    {b.subtitle && <div style={blockSub}>{b.subtitle}</div>}
-
-                                    {b.kind === "private" && typeof b.activityId === "number" && (
-                                        <button
-                                            style={miniDelete}
-                                            onClick={() => onDeleteActivity(b.activityId as number)}
-                                            title="Supprimer"
-                                        >
-                                            ✕
-                                        </button>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                ))}
             </div>
         </div>
     );
@@ -760,7 +784,7 @@ const calWrap: CSSProperties = {
 
 const calHeader: CSSProperties = {
     display: "grid",
-    gridTemplateColumns: "70px repeat(7, 1fr)",
+    gridTemplateColumns: "70px repeat(7, 1fr)", // ✅ 7 jours
     background: "rgba(0,0,0,0.03)",
     borderBottom: "1px solid rgba(0,0,0,0.10)",
 };
@@ -777,9 +801,15 @@ const dayHeaderCell: CSSProperties = {
     borderLeft: "1px solid rgba(0,0,0,0.06)",
 };
 
+const calBodyScroll: CSSProperties = {
+    overflowY: "auto", // ✅ scroll vertical (heures)
+    overflowX: "hidden", // ✅ pas de scroll horizontal, on garde l'aspect "comme avant"
+    background: "white",
+};
+
 const calBody: CSSProperties = {
     display: "grid",
-    gridTemplateColumns: "70px repeat(7, 1fr)",
+    gridTemplateColumns: "70px repeat(7, 1fr)", // ✅ 7 jours (même layout que le header)
 };
 
 const timeCol: CSSProperties = {
