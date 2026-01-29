@@ -11,12 +11,18 @@ class ActivityController extends Controller
     {
         $user = auth()->user();
 
-        $activity = $user->activities()->create([
-            'activity_name' => $request->activity_name,
-            'start_time' => $request->start_time,
-            'end_time' => $request->end_time,
-            'day' => $request->day,
-        ]);
+        try{
+            $activity = $user->activities()->create([
+                'activity_name' => $request->activity_name,
+                'start_time' => $request->start_time,
+                'end_time' => $request->end_time,
+                'day' => $request->day,
+            ]);
+        } catch (\Throwable $th) {
+            return response()->json([
+                'error' => $th->getMessage(),
+            ], 400);
+        }
 
         if (!$activity->save()){
             return response()->json([

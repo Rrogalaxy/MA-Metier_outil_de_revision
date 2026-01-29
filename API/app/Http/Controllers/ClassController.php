@@ -34,7 +34,7 @@ class ClassController extends Controller
         } else {
             return response()->json([
                 'content' => 'Vous ne possédez pas les droits pour créer une classe'
-            ]);
+            ], 401);
         }
     }
 
