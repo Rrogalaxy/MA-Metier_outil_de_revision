@@ -32,6 +32,7 @@ async function request<T>(method: HttpMethod, path: string, body?: unknown): Pro
         method,
         headers: {
             "Content-Type": "application/json",
+            "Accept": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: body === undefined ? undefined : JSON.stringify(body),
