@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ClassController;
 use App\Http\Controllers\CourseController;
@@ -12,10 +13,13 @@ Route::get('/user', function (Request $request) {
 })->middleware('auth:sanctum');
 
 Route::middleware(['auth:sanctum', 'checkHeaders'])->group(function(): void {
-    // ----- ROUTES CLASS ----- //
+    // ----- ROUTES ACTIVITY ----- //
+    Route::post('/activity/create', [ActivityController::class, 'create']);
+
+    // ----- ROUTE CLASS ----- //
     Route::post('/class/create', [ClassController::class, 'create']);
 
-    // ----- ROUTE STUDENT ----- //
+    // ----- ROUTES STUDENT ----- //
     Route::get('/student/class', [ClassController::class, 'index']);
     Route::post('/student/addClass', [UserController::class, 'addStudentToClass']);
     Route::post('/student', [UserController::class, 'getUser']);
@@ -28,5 +32,5 @@ Route::middleware(['auth:sanctum', 'checkHeaders'])->group(function(): void {
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
 
-// ----- ROUTES CLASS ----- //
+// ----- ROUTE CLASS ----- //
 Route::get('/class', [ClassController::class, 'index']);
