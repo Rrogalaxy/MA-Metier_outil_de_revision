@@ -1,4 +1,4 @@
-🧩 **Fonctionnalités :**
+🧩 **Fonctionnalités:**
 
 🏠 **Dashboard**
 
@@ -53,6 +53,8 @@ Aucune modification nécessaire pour passer au backend réel plus tard.
 
 
 ------------------------------------------------
+
+
 
 **Installer et démarrer le serveur Vite local:**
 

@@ -21,11 +21,17 @@ class CourseController extends Controller
             return response()->json($validator->errors(), 400);
         }
 
-        $course = Course::where('course_name', $request->name_course)->first();
+        try {
+            $course = Course::where('course_name', $request->name_course)->first();
 
-        $class = StudentClass::where(['class_name' => $request->name_class, 'class_year' => $request->year_class])->first();
+            $class = StudentClass::where(['class_name' => $request->name_class, 'class_year' => $request->year_class])->first();
 
-        $class->courses()->attach($course->course_id);
+            $class->courses()->attach($course->course_id);
+        } catch (\Throwable $th) {
+            return response()->json([
+                'error' => $th->getMessage()
+            ], 400);
+        }
 
         return response()->json([
             'course' => $course->toArray(),

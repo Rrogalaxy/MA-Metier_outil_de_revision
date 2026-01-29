@@ -5,6 +5,8 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -23,7 +25,7 @@ class User extends Authenticatable
     protected $primaryKey = 'id';
     public $incrementing = true;
     protected $keyType = 'string';
-    protected $with = ['studentClass'];
+    protected $with = ['studentClass', 'activities'];
 
     protected $fillable = [
         'email',
@@ -80,5 +82,10 @@ class User extends Authenticatable
     public function studentClass(): BelongsTo
     {
         return $this->belongsTo(StudentClass::class, 'class_id', 'class_id');
+    }
+
+    public function activities(): HasMany
+    {
+        return $this->hasMany(Activity::class);
     }
 }
