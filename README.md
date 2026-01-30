@@ -54,6 +54,53 @@ Aucune modification nécessaire pour passer au backend réel plus tard.
 
 ------------------------------------------------
 
+**Installer et démarrer le serveur Laravel local:**
+
+Installer PHP
+https://windows.php.net/download/
+Installer Composer et suivre le guide d'installation sur le site:
+https://getcomposer.org
+Installer Laravel
+https://laravel.com/docs/12.x/installation#installing-php
+
+Une fois le projet téléchargé et mis dans un dossier, prenez le path de vote dossier avec le fichier \API. (dans mon cas : C:\Users\pj77vjm\Desktop\revisions-poc-frontend\API)
+
+Ouvrir un terminal et lancer la commande :
+
+cd "$env:USERPROFILE\Desktop\revisions-poc-frontend\API"
+
+lancer les commandes:
+```
+composer install
+cp .env.exemple .env
+```
+
+Changer dans le fichier .env les informations pour se connecter à une base de donnée MySQL que vous devrez télécharger au préalable. Ex: XAMPP
+
+Voici un exemple du fichier à changer (il faut enlever les "#" pour décommenter la ligne). Il faudra mettre vos informations pour vous connecter avec votre base de donnée qui est lancé en local sur votre machine.
+
+<img width="280" height="129" alt="image" src="https://github.com/user-attachments/assets/d1f4dc93-10ab-4936-9b2b-87a3076d81b7" />
+
+Créer une database nommé "db_ma_metier"
+```
+DROP DATABASE IF EXISTS db_ma_metier;
+CREATE DATABASE db_ma_metier;
+USE db_ma_metier;
+```
+
+Une fois la base de donnée créé et fonctionnelle, on peut remplir la base de donnée avec les migrations laravel:
+
+Dans le terminal, lancez ces commandes:
+```
+php artisan migrate
+php artisan db:seed (Si vous souhaitez avoir des données de test)
+php artisan serve
+```
+
+Si le serveur se lance correctement, vous devrez avoir un affichage comme celui-ci sur le terminal:
+<img width="358" height="63" alt="image" src="https://github.com/user-attachments/assets/61df8aba-4c85-47bf-9c0f-c2150c2efeb8" />
+
+------------------------------------------------
 
 
 **Installer et démarrer le serveur Vite local:**
