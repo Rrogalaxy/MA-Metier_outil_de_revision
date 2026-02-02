@@ -1,0 +1,100 @@
+12:01:2026
+
+-première réunion ~1h
+-recherche d'info sur les outils discuté ~45m
+
+-------------------------------------------------
+
+13:01:2026
+
+-réunion de groupe ~20m
+-début de création du MCD ~15m
+-invitation des collaborateur sur le git ~5m
+-recherche d'info de différent outils ~1h
+
+
+-------------------------------------------------
+
+14:01:2026
+
+-réunion de groupe ~20m
+-finission du MCD ~10m
+-decouverte de icescrum ~20m
+-recherche sur certaines fonctionnalités Git ~1h
+
+-------------------------------------------------
+
+15:01:2026
+
+-réunion de groupe ~15m
+-téléchargement de nodejs ~10m
+-tester le site de base ~1h
+
+
+-------------------------------------------------
+
+16:01:2026
+
+-réunion de groupe ~20m
+-lister les vues ~15m
+-réunion avec le chef ~30m
+-recherches sur le net ~1h30   
+
+--------------------------------------------------
+
+19:01:2026
+
+-réunion de groupe ~40m
+-recherches ~50m  
+
+-------------------------------------------------
+
+20:01:2026
+
+-réunion ~10m
+-recherche et test du site ~45m
+
+_________________________________________________
+
+21:01:2026
+
+-recherche et début de la doc foireuse ~1:45h
+
+__________________________________________________
+
+22:01:2026
+
+-reunion ~30m
+-doc ~45m
+
+___________________________________________________
+
+23:01:2026
+
+-réunion ~40m
+-doc + recherche ~30m
+
+___________________________________________________
+
+24:01:2026
+
+- recherche ~1h
+
+___________________________________________________
+
+26:01:2026 - 28:01:2026
+
+- recherche + doc ~2h30
+
+___________________________________________________
+
+29:01:2026
+
+-présentation portes ouvertes ~2h
+
+___________________________________________________
+
+30:01:2026
+
+-présentation au chef de groupe (~40m)
+
